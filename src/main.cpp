@@ -342,7 +342,7 @@ int initserialif(int* fd)
     if (NULL != fd)
     {
         *fd = open(UART_DEV, O_RDWR | O_NOCTTY | O_NONBLOCK);
-        if (0 <= fd)
+        if (0 <= *fd)
         {
             disableHwFlow(*fd);
             configureSerial(*fd);
