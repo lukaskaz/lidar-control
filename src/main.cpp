@@ -1,16 +1,17 @@
-#include <fcntl.h>
+#include "serial.hpp"
+
 #include <poll.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <termios.h>
-#include <time.h>
-#include <unistd.h>
 
-//#define UART_DEV	"/dev/ttyS0"
-#define UART_DEV "/dev/ttyUSB0"
-#define OPTBAUDRATE B115200
+#include <csignal>
+#include <functional>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #define MODULE_NAME "Lidar 360 scanner"
 #define SAMPLESPERSCAN 360
 #define ANGLESTOCHK {0, 45, 90, 135, 180, 225, 270, 315};
@@ -22,7 +23,7 @@
 #define SCANSTARTSCAN 0x20
 #define SCANSTOPSCAN 0x25
 
-typedef enum
+enum op_t
 {
     OP_GET_NONE = 0,
     OP_GET_FIRST,
@@ -32,11 +33,9 @@ typedef enum
     OP_GET_SCAN,
     OP_GET_EXIT,
     OP_GET_LAST = OP_GET_EXIT
-} op_t;
+};
 
-typedef void (*ophdlr_ptr)(int);
-
-int configureSerial(int fd);
+using op_func = std::function<void(std::shared_ptr<serial>)>;
 
 op_t getusersel(void)
 {
@@ -55,7 +54,7 @@ op_t getusersel(void)
         printf("%u : to exit\n", OP_GET_EXIT);
         printf("-> ");
 
-        selection = (op_t)getchar() - '0';
+        selection = static_cast<op_t>(getchar() - '0');
         while ('\n' != getchar())
             addchars++;
         if (OP_GET_FIRST > selection || OP_GET_LAST < selection || addchars > 0)
@@ -90,52 +89,11 @@ int isenterpressed(void)
     return 0;
 }
 
-int sendcmdtoscanner(int fd, int cmd)
+void readinfo(std::shared_ptr<serial> serialIf)
 {
-    unsigned char data[] = {SCANSTARTFLAG, cmd};
-    int ret = write(fd, data, sizeof(data));
-
-    return (0 < ret) ? 0 : (-1);
-}
-
-int recvdatafromscanner(int fd, char data[], int size)
-{
-    int bytes = 0;
-
-    if (NULL != data && 0 < size)
-    {
-        struct pollfd pollInfo = {.fd = fd, .events = POLLIN, .revents = 0};
-        int timeoutms = 200, ret = 0;
-
-        for (int i = 0; i < size; i++)
-        {
-            ret = poll(&pollInfo, 1, timeoutms);
-            if (0 < ret && 0 != (pollInfo.revents & POLLIN))
-            {
-                bytes += read(fd, &data[i], 1);
-            }
-            else if (0 == ret)
-            {
-                // timeout occured, abort
-                break;
-            }
-            else
-            {
-                // error occured, abort
-                break;
-            }
-        }
-    }
-
-    return (size == bytes) ? 0 : (-1);
-}
-
-void readinfo(int fd)
-{
-    unsigned char resp[27 + 1] = {0};
-
-    sendcmdtoscanner(fd, SCANGETINFOCMD);
-    recvdatafromscanner(fd, resp, sizeof(resp) - 1);
+    serialIf->write({SCANSTARTFLAG, SCANGETINFOCMD});
+    std::vector<uint8_t> resp;
+    serialIf->read(resp, 27);
 
     printf("Model: 0x%02X\n", resp[7]);
     printf("Firmware: %u.%u\n", resp[9], resp[8]);
@@ -149,7 +107,7 @@ void readinfo(int fd)
     printf("\n");
 }
 
-void readstatus(int fd)
+void readstatus(std::shared_ptr<serial> serialIf)
 {
     enum states
     {
@@ -162,38 +120,48 @@ void readstatus(int fd)
     static const char* statesinfo[] = {[STGOOD] = "\e[1;32mOk\e[0m",
                                        [STWARN] = "\e[1;33mWarning\e[0m",
                                        [STERR] = "\e[1;31mERROR\e[0m"};
-    unsigned char resp[10 + 1] = {0}, *status = &resp[7];
 
-    sendcmdtoscanner(fd, SCANGETSTATCMD);
-    recvdatafromscanner(fd, resp, sizeof(resp) - 1);
+    serialIf->write({SCANSTARTFLAG, SCANGETSTATCMD});
+    std::vector<uint8_t> resp;
+    serialIf->read(resp, 10);
 
-    if (STFIRST <= *status && STLAST >= *status)
+    uint8_t status = resp.at(7);
+    if (STFIRST <= status && STLAST >= status)
     {
-        const char* const info = statesinfo[*status];
+        const char* const info = statesinfo[status];
         printf("Status is: %s\n", info);
     }
     else
     {
-        printf("Cannot recognize status: %u\n", *status);
+        printf("Cannot recognize status: %u\n", status);
     }
 }
 
-void readsamplerate(int fd)
+void readsamplerate(std::shared_ptr<serial> serialIf)
 {
-    unsigned char resp[11 + 1] = {0};
-
-    sendcmdtoscanner(fd, SCANGETSRATECMD);
-    recvdatafromscanner(fd, resp, sizeof(resp) - 1);
+    serialIf->write({SCANSTARTFLAG, SCANGETSRATECMD});
+    std::vector<uint8_t> resp;
+    serialIf->read(resp, 11);
 
     printf("Single std scan time: %u ms\n", (resp[8] << 8) | resp[7]);
     printf("Single express scan time: %u ms\n", (resp[10] << 8) | resp[9]);
 }
 
-void stopscanning(int fd)
+void startscanning(std::shared_ptr<serial> serialIf)
 {
-    sendcmdtoscanner(fd, SCANSTOPSCAN);
-    usleep(2000);
-    ioctl(fd, TCFLSH, TCIOFLUSH);
+    serialIf->write({SCANSTARTFLAG, SCANSTARTSCAN});
+    std::vector<uint8_t> resp;
+    serialIf->read(resp, 7);
+    // serialIf->flushBuffer();
+}
+
+void stopscanning(std::shared_ptr<serial> serialIf)
+{
+    serialIf->write({SCANSTARTFLAG, SCANSTOPSCAN});
+    std::vector<uint8_t> resp;
+    while (serialIf->read(resp, 10))
+        ;
+    // serialIf->flushBuffer();
 }
 
 const char* gettimestr(void)
@@ -265,12 +233,9 @@ void displaysamples(int samples[][3], int amount)
     printf("\e[?25h");
 }
 
-void readscanning(int fd)
+void readscanning(std::shared_ptr<serial> serialIf)
 {
     static int samplesarr[SAMPLESPERSCAN][3] = {0};
-    unsigned char resp[7 + 1] = {0}, sample[5 + 1] = {0};
-
-    // stopscanning(fd);
 
     system("clear");
     printf("\033[1;1H");
@@ -278,17 +243,16 @@ void readscanning(int fd)
            "%s> Press enter to stop\n",
            gettimestr());
 
-    sendcmdtoscanner(fd, SCANSTARTSCAN);
-    recvdatafromscanner(fd, resp, sizeof(resp) - 1);
-
+    startscanning(serialIf);
     for (int smpidx = 0; smpidx < SAMPLESPERSCAN; smpidx++)
     {
-        recvdatafromscanner(fd, sample, sizeof(sample) - 1);
-        int quality = sample[0] >> 2, newscan = sample[0] & 0x01,
-            angle = ((sample[2] << 7) | (sample[1] >> 1)) / 64,
-            distance = ((sample[4] << 8) | sample[3]) / 4;
+        std::vector<uint8_t> sample;
+        serialIf->read(sample, 5, 1000);
+        uint32_t quality = sample[0] >> 2, newscan = sample[0] & 0x01,
+                 angle = ((sample[2] << 7) | (sample[1] >> 1)) / 64,
+                 distance = ((sample[4] << 8) | sample[3]) / 4;
 
-        if (0 != newscan)
+        if (newscan)
         {
             displaysamples(samplesarr, smpidx);
             memset(samplesarr, 0, sizeof(samplesarr));
@@ -299,78 +263,63 @@ void readscanning(int fd)
         samplesarr[smpidx][1] = distance;
         samplesarr[smpidx][2] = 100 * quality / 15;
 
-        if (1 == isenterpressed())
+        if (isenterpressed())
+        {
             break;
+        }
     }
-
-    stopscanning(fd);
+    stopscanning(serialIf);
 }
 
-void exitprogram(int fd)
+void exitprogram(std::shared_ptr<serial> serialIf)
 {
     printf("Cleaning and closing\n");
-    close(fd);
     exit(0);
 }
 
-static ophdlr_ptr ophdlr[] = {
-    [OP_GET_NONE] = NULL,         [OP_GET_INFO] = readinfo,
-    [OP_GET_STATUS] = readstatus, [OP_GET_SAMPLERATE] = readsamplerate,
-    [OP_GET_SCAN] = readscanning, [OP_GET_EXIT] = exitprogram};
+static std::unordered_map<op_t, op_func> ophdlr = {
+    {OP_GET_INFO, readinfo},
+    {OP_GET_STATUS, readstatus},
+    {OP_GET_SAMPLERATE, readsamplerate},
+    {OP_GET_SCAN, readscanning},
+    {OP_GET_EXIT, exitprogram}};
 
-int disableHwFlow(int fd)
+void signalHandler(int signal)
 {
-    return ioctl(fd, TIOCMBIC, &(int){TIOCM_DTR | TIOCM_RTS});
-}
-
-int configureSerial(int fd)
-{
-    struct termios options = {0};
-    tcgetattr(fd, &options);
-    cfsetispeed(&options, OPTBAUDRATE);
-    cfsetospeed(&options, OPTBAUDRATE);
-    options.c_cc[VMIN] = 0;
-    options.c_cc[VTIME] = 0;
-    tcsetattr(fd, TCSANOW, &options);
-    tcflush(fd, TCIFLUSH);
-    fcntl(fd, F_SETFL, FNDELAY);
-    return 0;
-}
-
-int initserialif(int* fd)
-{
-    if (NULL != fd)
+    if (signal == SIGINT)
     {
-        *fd = open(UART_DEV, O_RDWR | O_NOCTTY | O_NONBLOCK);
-        if (0 <= *fd)
-        {
-            disableHwFlow(*fd);
-            configureSerial(*fd);
-            return 0;
-        }
+        throw std::runtime_error("Safe app termiantion");
+        ;
     }
-
-    return (-1);
 }
 
 int main(int argc, char* argv[])
 {
-    int fd = (-1), ret = initserialif(&fd);
-    if (0 == ret)
+    std::signal(SIGINT, signalHandler);
+
+    try
     {
-        while (1)
+        std::shared_ptr<serial> serialIf =
+            std::make_shared<usb>("/dev/ttyUSB0", B115200);
+        while (true)
         {
             op_t usersel = getusersel();
             if (NULL != ophdlr[usersel])
-                ophdlr[usersel](fd);
+            {
+                ophdlr[usersel](serialIf);
+            }
             printf("\nPress enter to return to menu\n");
             getchar();
         }
     }
-    else
+    catch (const std::exception& ex)
     {
-        printf("Cannot initialize serial interface\n");
+        std::cerr << ex.what() << "\n";
+        stopscanning(std::make_shared<usb>("/dev/ttyUSB0", B115200));
     }
-
+    catch (...)
+    {
+        std::cerr << "Unknown exception occured, aborting!\n";
+    }
     return 0;
 }

@@ -6,7 +6,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} \
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
-  -fpermissive"
+  -fpermissive -g"
 #  -pedantic \
 #  -Wall \
 #  -Wextra \
