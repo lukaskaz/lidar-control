@@ -6,19 +6,19 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} \
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
-  -fpermissive -g"
-#  -pedantic \
-#  -Wall \
-#  -Wextra \
-#  -Wnon-virtual-dtor \
-#  -Wpointer-arith \
-#  -Wcast-qual \
-#  -Wno-sign-conversion \
-#  -Woverloaded-virtual \
-#  -Wpointer-arith \
-#  -Wcast-qual \
-#  -Wno-strict-aliasing"
-#   -Wconversion \
+-Wall \
+-Wextra \
+-Wconversion \
+-Wnon-virtual-dtor \
+-Wpointer-arith \
+-Wcast-qual \
+-Wno-sign-conversion \
+-Woverloaded-virtual \
+-Wpointer-arith \
+-Wcast-qual \
+-Wno-strict-aliasing"
+#   -pedantic \
+
 #   -Wshadow \
 )
 

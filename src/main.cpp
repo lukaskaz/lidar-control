@@ -1,7 +1,6 @@
+#include "climenu.hpp"
 #include "serial.hpp"
 
-#include <poll.h>
-#include <stdio.h>
 #include <string.h>
 
 #include <csignal>
@@ -9,7 +8,6 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #define MODULE_NAME "Lidar 360 scanner"
@@ -22,72 +20,6 @@
 #define SCANGETSRATECMD 0x59
 #define SCANSTARTSCAN 0x20
 #define SCANSTOPSCAN 0x25
-
-enum op_t
-{
-    OP_GET_NONE = 0,
-    OP_GET_FIRST,
-    OP_GET_INFO = OP_GET_FIRST,
-    OP_GET_STATUS,
-    OP_GET_SAMPLERATE,
-    OP_GET_SCAN,
-    OP_GET_EXIT,
-    OP_GET_LAST = OP_GET_EXIT
-};
-
-using op_func = std::function<void(std::shared_ptr<serial>)>;
-
-op_t getusersel(void)
-{
-    op_t selection = OP_GET_NONE;
-
-    while (1)
-    {
-        int addchars = 0;
-
-        system("clear");
-        printf("== " MODULE_NAME " menu ==\n");
-        printf("%u : to get info\n", OP_GET_INFO);
-        printf("%u : to get status\n", OP_GET_STATUS);
-        printf("%u : to get sampling time\n", OP_GET_SAMPLERATE);
-        printf("%u : to start scanning\n", OP_GET_SCAN);
-        printf("%u : to exit\n", OP_GET_EXIT);
-        printf("-> ");
-
-        selection = static_cast<op_t>(getchar() - '0');
-        while ('\n' != getchar())
-            addchars++;
-        if (OP_GET_FIRST > selection || OP_GET_LAST < selection || addchars > 0)
-        {
-            printf("Unsupported selection, press"
-                   " enter and try again\n");
-            while ('\n' != getchar())
-                ;
-        }
-        else
-            break;
-    }
-
-    return selection;
-}
-
-int isenterpressed(void)
-{
-    struct pollfd pollInfo = {
-        .fd = fileno(stdin), .events = POLLIN, .revents = 0};
-    int ret = poll(&pollInfo, 1, 0);
-    if (0 < ret && 0 != (pollInfo.revents & POLLIN))
-    {
-        int inchar = getchar();
-        if ('\n' == inchar)
-            return 1;
-        else
-            while ('\n' != getchar())
-                ;
-    }
-
-    return 0;
-}
 
 void readinfo(std::shared_ptr<serial> serialIf)
 {
@@ -126,7 +58,7 @@ void readstatus(std::shared_ptr<serial> serialIf)
     serialIf->read(resp, 10);
 
     uint8_t status = resp.at(7);
-    if (STFIRST <= status && STLAST >= status)
+    if (STLAST >= status)
     {
         const char* const info = statesinfo[status];
         printf("Status is: %s\n", info);
@@ -196,7 +128,7 @@ void displaysamples(int samples[][3], int amount)
     // align first line and hide cursor
     printf("\033[5;1H\e[?25l");
     qsort(samples, amount, sizeof(*samples), comparearr2d);
-    for (int i = 0; i < angarrsize; i++)
+    for (uint32_t i = 0; i < angarrsize; i++)
     {
         int* sample = NULL;
 
@@ -216,11 +148,17 @@ void displaysamples(int samples[][3], int amount)
             const char* qacolor = "\e[1;32m";
 
             if (sample[2] <= 30)
+            {
                 qacolor = "\e[1;31m";
+            }
             else if (sample[2] <= 60)
+            {
                 qacolor = "\e[1;33m";
+            }
             else
-                ; // green color here
+            {
+                // green color here
+            }
 
             printf("[%d] angle: \e[4m%3u\260\e[0m,"
                    " dist: \e[4m%5.1fcm\e[0m,"
@@ -263,7 +201,7 @@ void readscanning(std::shared_ptr<serial> serialIf)
         samplesarr[smpidx][1] = distance;
         samplesarr[smpidx][2] = 100 * quality / 15;
 
-        if (isenterpressed())
+        if (Menu::isenterpressed())
         {
             break;
         }
@@ -271,18 +209,11 @@ void readscanning(std::shared_ptr<serial> serialIf)
     stopscanning(serialIf);
 }
 
-void exitprogram(std::shared_ptr<serial> serialIf)
+void exitprogram([[maybe_unused]] std::shared_ptr<serial> serialIf)
 {
     printf("Cleaning and closing\n");
     exit(0);
 }
-
-static std::unordered_map<op_t, op_func> ophdlr = {
-    {OP_GET_INFO, readinfo},
-    {OP_GET_STATUS, readstatus},
-    {OP_GET_SAMPLERATE, readsamplerate},
-    {OP_GET_SCAN, readscanning},
-    {OP_GET_EXIT, exitprogram}};
 
 void signalHandler(int signal)
 {
@@ -293,7 +224,7 @@ void signalHandler(int signal)
     }
 }
 
-int main(int argc, char* argv[])
+int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
 {
     std::signal(SIGINT, signalHandler);
 
@@ -301,16 +232,16 @@ int main(int argc, char* argv[])
     {
         std::shared_ptr<serial> serialIf =
             std::make_shared<usb>("/dev/ttyUSB0", B115200);
-        while (true)
-        {
-            op_t usersel = getusersel();
-            if (NULL != ophdlr[usersel])
-            {
-                ophdlr[usersel](serialIf);
-            }
-            printf("\nPress enter to return to menu\n");
-            getchar();
-        }
+
+        Menu menu{
+            "Lidar 360 scanner",
+            {{"to get info", std::bind(readinfo, serialIf)},
+             {"to get status", std::bind(readstatus, serialIf)},
+             {"to get sampling time", std::bind(readsamplerate, serialIf)},
+             {"to start scanning", std::bind(readscanning, serialIf)},
+             {"exit", std::bind(exitprogram, serialIf)}}};
+
+        menu.run();
     }
     catch (const std::exception& ex)
     {
