@@ -1,4 +1,5 @@
 # lidar-control
+App handling 360 distance scanner (A1M8)
 
 Menu/operations: <br>
 == Lidar 360 scanner menu ==<br>
