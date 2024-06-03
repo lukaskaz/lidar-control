@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+#include <boost/program_options.hpp>
+
 #include <csignal>
 #include <functional>
 #include <iostream>
@@ -220,21 +222,39 @@ void signalHandler(int signal)
     if (signal == SIGINT)
     {
         throw std::runtime_error("Safe app termiantion");
-        ;
     }
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
+int main(int argc, char* argv[])
 {
     std::signal(SIGINT, signalHandler);
+    boost::program_options::options_description desc("Allowed options");
+    desc.add_options()("help,h", "produce help message")(
+        "device,d", boost::program_options::value<std::string>(),
+        "serial device node")("speed,s",
+                              boost::program_options::value<std::string>(),
+                              "speed of serial communication");
 
+    boost::program_options::variables_map vm;
+    boost::program_options::store(
+        boost::program_options::parse_command_line(argc, argv, desc), vm);
+    boost::program_options::notify(vm);
+
+    if (vm.count("help"))
+    {
+        std::cout << desc;
+        return 0;
+    }
+
+    const auto& device =
+        vm.count("device") ? vm.at("device").as<std::string>() : "/dev/ttyUSB0";
     try
     {
         std::shared_ptr<serial> serialIf =
-            std::make_shared<usb>("/dev/ttyUSB0", B115200);
+            std::make_shared<usb>(device, B115200);
 
         Menu menu{
-            "Lidar 360 scanner",
+            "[Lidar 360 scanner on " + device + "]",
             {{"to get info", std::bind(readinfo, serialIf)},
              {"to get status", std::bind(readstatus, serialIf)},
              {"to get sampling time", std::bind(readsamplerate, serialIf)},
@@ -246,7 +266,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
     catch (const std::exception& ex)
     {
         std::cerr << ex.what() << "\n";
-        stopscanning(std::make_shared<usb>("/dev/ttyUSB0", B115200));
+        stopscanning(std::make_shared<usb>(device, B115200));
     }
     catch (...)
     {

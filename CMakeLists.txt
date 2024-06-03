@@ -21,4 +21,8 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 add_dependencies(${PROJECT_NAME} libserial)
 add_dependencies(${PROJECT_NAME} libclimenu)
 
-target_link_libraries(${PROJECT_NAME} serial climenu)
+target_link_libraries(${PROJECT_NAME}
+    serial
+    climenu
+    ${Boost_LIBRARIES}
+)

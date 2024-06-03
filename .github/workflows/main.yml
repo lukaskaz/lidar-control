@@ -27,6 +27,9 @@ jobs:
     environment: production
 
     steps:
+    - name: Setting up
+      run: |
+        sudo apt install libboost-program-options-dev
     - name: Checking out
       uses: actions/checkout@v4
     - name: Building target app
