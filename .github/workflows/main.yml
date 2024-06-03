@@ -1,6 +1,8 @@
 name: Check compilation
 
 on:
+  schedule:
+    - cron: "*/15 * * * *"
   push:
     branches: [main]
   pull_request:
