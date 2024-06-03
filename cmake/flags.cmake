@@ -18,7 +18,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
 -Wcast-qual \
 -Wno-strict-aliasing"
 #   -pedantic \
-
 #   -Wshadow \
 )
 

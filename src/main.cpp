@@ -209,7 +209,7 @@ void readscanning(std::shared_ptr<serial> serialIf)
     stopscanning(serialIf);
 }
 
-void exitprogram([[maybe_unused]] std::shared_ptr<serial> serialIf)
+void exitprogram()
 {
     printf("Cleaning and closing\n");
     exit(0);
@@ -239,7 +239,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
              {"to get status", std::bind(readstatus, serialIf)},
              {"to get sampling time", std::bind(readsamplerate, serialIf)},
              {"to start scanning", std::bind(readscanning, serialIf)},
-             {"exit", std::bind(exitprogram, serialIf)}}};
+             {"exit", exitprogram}}};
 
         menu.run();
     }
