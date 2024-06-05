@@ -231,9 +231,9 @@ int main(int argc, char* argv[])
     boost::program_options::options_description desc("Allowed options");
     desc.add_options()("help,h", "produce help message")(
         "device,d", boost::program_options::value<std::string>(),
-        "serial device node")(
-        "speed,s", boost::program_options::value<std::string>(),
-        "speed of serial communication")("test,t", "non-interactive app test");
+        "serial device node")("speed,s",
+                              boost::program_options::value<std::string>(),
+                              "speed of serial communication");
 
     boost::program_options::variables_map vm;
     boost::program_options::store(
@@ -251,7 +251,7 @@ int main(int argc, char* argv[])
     try
     {
         std::shared_ptr<serial> serialIf =
-            vm.count("test") ? nullptr : std::make_shared<usb>(device, B115200);
+            std::make_shared<usb>(device, B115200);
 
         Menu menu{
             "[Lidar 360 scanner on " + device + "]",

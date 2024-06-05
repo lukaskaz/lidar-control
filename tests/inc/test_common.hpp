@@ -23,6 +23,6 @@ TEST_F(TestCommon, IsNormalValueCorrect)
 
 TEST_F(TestCommon, IsInvertedValueCorrect)
 {
-    ASSERT_NE(getInverted(), ~value);
+    ASSERT_NE(getInverted(), value);
     EXPECT_EQ(getInverted(), ~value);
 }

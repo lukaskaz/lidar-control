@@ -41,7 +41,7 @@ jobs:
         mkdir build && cd build && cmake .. && make
     - name: Executing program
       run: |
-        cd build && ./lidar-control --test
+        cd build && ./lidar-control --help
 
   test:
     name: Unit tests
