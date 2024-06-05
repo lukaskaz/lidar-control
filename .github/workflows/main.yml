@@ -42,7 +42,7 @@ jobs:
     - name: Executing program
       run: |
         ls /dev
-        cd build && ./lidar-control
+        cd build && ./lidar-control --device /dev/ttyS0
 
   test:
     name: Unit tests
