@@ -5,6 +5,7 @@
 
 #include <boost/program_options.hpp>
 
+#include <array>
 #include <csignal>
 #include <functional>
 #include <iostream>
@@ -122,90 +123,74 @@ int comparearr2d(const void* arr1, const void* arr2)
         return 0;
 }
 
-void displaysamples(int samples[][3], int amount)
+using Samples = std::map<uint32_t, std::pair<uint32_t, uint32_t>>;
+
+void displaysamples(const Samples& samples)
 {
-    static const int angtoshow[] = ANGLESTOCHK;
-    static const size_t angarrsize = sizeof(angtoshow) / sizeof(*angtoshow);
+    std::array angletoshow = ANGLESTOCHK;
 
     // align first line and hide cursor
     printf("\033[5;1H\e[?25l");
-    qsort(samples, amount, sizeof(*samples), comparearr2d);
-    for (uint32_t i = 0; i < angarrsize; i++)
+    auto showAngleIt = angletoshow.begin();
+    for (const auto& [angle, measure] : samples)
     {
-        int* sample = NULL;
-
-        for (int j = 0; j < amount; j++)
-        {
-            const int angle = samples[j][0], quality = samples[j][2];
-
-            if (angle >= angtoshow[i] && 0 != quality)
-            {
-                sample = samples[j];
-                break;
-            }
-        }
-
-        if (NULL != sample)
+        const auto& [distance, quality] = measure;
+        if (angle >= *showAngleIt && quality > 0)
         {
             const char* qacolor = "\e[1;32m";
-
-            if (sample[2] <= 30)
+            if (quality <= 30)
             {
-                qacolor = "\e[1;31m";
+                qacolor = "\e[1;31m"; // red status
             }
-            else if (sample[2] <= 60)
+            else if (quality <= 60)
             {
-                qacolor = "\e[1;33m";
+                qacolor = "\e[1;33m"; // yellow status
             }
             else
             {
-                // green color here
+                // default green status
             }
 
-            printf("[%d] angle: \e[4m%3u\260\e[0m,"
-                   " dist: \e[4m%5.1fcm\e[0m,"
-                   " confid: %s%3u%\e[0m\n",
-                   i + 1, sample[0], (double)sample[1] / 10, qacolor,
-                   sample[2]);
+            auto pos = std::distance(angletoshow.begin(), ++showAngleIt);
+            printf("[%zd] angle: \e[4m%3u\260\e[0m, dist: \e[4m%5.1fcm\e[0m, "
+                   "confid: %s%3u%\e[0m\n",
+                   pos, angle, distance / 10.0, qacolor, quality);
+
+            if (pos == angletoshow.size())
+            {
+                printf("\nCollected samples amount: [%zu]\n", samples.size());
+                break;
+            }
         }
     }
-
     printf("\e[?25h");
 }
 
 void readscanning(std::shared_ptr<serial> serialIf)
 {
-    static int samplesarr[SAMPLESPERSCAN][3] = {0};
-
     system("clear");
-    printf("\033[1;1H");
-    printf("Standard 360 scan started on\n"
-           "%s> Press enter to stop\n",
+    printf("\033[1;1HNormal 360 scan started on\n%s> Press enter to stop\n",
            gettimestr());
 
+    Samples samples;
     startscanning(serialIf);
-    for (int smpidx = 0; smpidx < SAMPLESPERSCAN; smpidx++)
+    while (!Menu::isenterpressed())
     {
-        std::vector<uint8_t> sample;
-        serialIf->read(sample, 5, 1000);
-        uint32_t quality = sample[0] >> 2, newscan = sample[0] & 0x01,
-                 angle = ((sample[2] << 7) | (sample[1] >> 1)) / 64,
-                 distance = ((sample[4] << 8) | sample[3]) / 4;
+        std::vector<uint8_t> raw;
+        serialIf->read(raw, 5, 1000);
 
-        if (newscan)
+        bool newscan = raw[0] & 0x01;
+        if (!newscan)
         {
-            displaysamples(samplesarr, smpidx);
-            memset(samplesarr, 0, sizeof(samplesarr));
-            smpidx = 0;
+            const uint32_t quality = 100 * (raw[0] >> 2) / 15,
+                           angle = ((raw[2] << 7) | (raw[1] >> 1)) / 64,
+                           distance = ((raw[4] << 8) | raw[3]) / 4;
+            samples.try_emplace(angle, distance, quality);
         }
-
-        samplesarr[smpidx][0] = angle;
-        samplesarr[smpidx][1] = distance;
-        samplesarr[smpidx][2] = 100 * quality / 15;
-
-        if (Menu::isenterpressed())
+        else
         {
-            break;
+            displaysamples(std::move(samples));
+            samples.clear();
         }
     }
     stopscanning(serialIf);
@@ -253,13 +238,14 @@ int main(int argc, char* argv[])
         std::shared_ptr<serial> serialIf =
             std::make_shared<usb>(device, B115200);
 
-        Menu menu{
-            "[Lidar 360 scanner on " + device + "]",
-            {{"to get info", std::bind(readinfo, serialIf)},
-             {"to get status", std::bind(readstatus, serialIf)},
-             {"to get sampling time", std::bind(readsamplerate, serialIf)},
-             {"to start scanning", std::bind(readscanning, serialIf)},
-             {"exit", exitprogram}}};
+        Menu menu{"[Lidar 360 scanner on " + device + "]",
+                  {{"get info", std::bind(readinfo, serialIf)},
+                   {"get status", std::bind(readstatus, serialIf)},
+                   {"get sampling time", std::bind(readsamplerate, serialIf)},
+                   {"start normal scanning", std::bind(readscanning, serialIf)},
+                   {"start express scanning",
+                    []() { std::cout << "[In progress...]\n"; }},
+                   {"exit", exitprogram}}};
 
         menu.run();
     }
