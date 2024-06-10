@@ -27,7 +27,7 @@
 #define SCANSTARTSCAN 0x20
 #define SCANSTOPSCAN 0x25
 
-using NormalSamples = std::map<float, std::pair<int32_t, int32_t>>;
+using NormalSamples = std::map<uint32_t, std::pair<double, uint32_t>>;
 using ExpressSamples = std::map<uint32_t, double>;
 using Measurement = std::pair<bool, std::pair<uint32_t, double>>;
 
@@ -241,10 +241,10 @@ void displaysamples(const NormalSamples& samples)
     // align first line and hide cursor
     printf("\033[5;1H\e[?25l");
     auto showAngleIt = angletoshow.begin();
-    for (const auto& [angle, measure] : samples)
+    for (const auto& [angle, measurement] : samples)
     {
-        const auto& [distance, quality] = measure;
-        if (angle >= static_cast<float>(*showAngleIt))
+        const auto& [distance, quality] = measurement;
+        if (angle >= *showAngleIt)
         {
             static constexpr auto qacolor = [](uint32_t quality) {
                 return quality <= 30 ? "\e[1;31m"                 /* red */
@@ -253,9 +253,9 @@ void displaysamples(const NormalSamples& samples)
             };
 
             auto pos = std::distance(angletoshow.begin(), ++showAngleIt);
-            printf("[%zd] angle: \e[4m%3.0f\260\e[0m, dist: \e[4m%5.1fcm\e[0m, "
+            printf("[%zd] angle: \e[4m%3u\260\e[0m, dist: \e[4m%5.1fcm\e[0m, "
                    "confid: %s%3u%\e[0m\n",
-                   pos, angle, distance / 10.0, qacolor(quality), quality);
+                   pos, angle, distance, qacolor(quality), quality);
 
             if (pos == angletoshow.size())
             {
@@ -267,6 +267,28 @@ void displaysamples(const NormalSamples& samples)
     printf("\e[?25h");
 }
 
+std::tuple<bool, uint32_t, uint32_t, double>
+    getnormaldata(std::shared_ptr<serial> serialIf, bool firstread = false)
+{
+    static constexpr uint32_t packetsize = 5;
+    std::vector<uint8_t> raw;
+    auto recvsize = firstread ? serialIf->read(raw, packetsize, 2000)
+                              : serialIf->read(raw, packetsize);
+
+    if (recvsize != packetsize)
+    {
+        throw std::runtime_error(std::string(__func__) +
+                                 ": received packet size is incorrect");
+    }
+
+    bool newscan = raw[0] & 0x01;
+    uint32_t quality = 100 * (raw[0] >> 2) / 15;
+    auto angle =
+        static_cast<uint32_t>(lround(((raw[2] << 7) | (raw[1] >> 1)) / 64.));
+    double distance = (((raw[4] << 8) | raw[3]) / 4.) / 10.;
+    return {newscan, quality, angle, distance};
+}
+
 void readnormalscanning(std::shared_ptr<serial> serialIf)
 {
     system("clear");
@@ -275,25 +297,19 @@ void readnormalscanning(std::shared_ptr<serial> serialIf)
 
     NormalSamples samples;
     startnormalscanning(serialIf);
+    auto [newscan, quality, angle, distance] = getnormaldata(serialIf, true);
     while (!Menu::isenterpressed())
     {
-        std::vector<uint8_t> raw;
-        serialIf->read(raw, 5, 1000);
-
-        bool newscan = raw[0] & 0x01;
-        if (!newscan)
+        if (newscan)
         {
-            const float angle =
-                static_cast<float>((raw[2] << 7) | (raw[1] >> 1)) / 64.f;
-            const uint32_t quality = 100 * (raw[0] >> 2) / 15,
-                           distance = ((raw[4] << 8) | raw[3]) / 4;
-            samples.try_emplace(angle, distance, quality);
-        }
-        else
-        {
-            displaysamples(std::move(samples));
+            displaysamples(samples);
             samples.clear();
         }
+        if (quality)
+        {
+            samples.try_emplace(angle, distance, quality);
+        }
+        std::tie(newscan, quality, angle, distance) = getnormaldata(serialIf);
     }
     stopscanning(serialIf);
 }
@@ -430,7 +446,7 @@ void readexpressscanning(std::shared_ptr<serial> serialIf)
         for (auto it = cabindataprev.cbegin(); it != cabindataprev.cend();
              std::advance(it, bytespercabin))
         {
-            uint8_t cabinnum = static_cast<uint8_t>(
+            auto cabinnum = static_cast<uint8_t>(
                 std::distance(cabindataprev.cbegin(), it) / bytespercabin);
             auto measurements = getcabindata(
                 {it, it + bytespercabin}, startangleprev, angledelta, cabinnum);
