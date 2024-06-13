@@ -34,8 +34,8 @@ using Measurement = std::pair<bool, std::pair<uint32_t, double>>;
 uint8_t getchecksum(const std::vector<uint8_t>& data)
 {
     uint8_t chsum{};
-    std::for_each(data.begin(), data.end(),
-                  [&chsum](const uint8_t byte) { chsum ^= byte; });
+    std::ranges::for_each(data,
+                          [&chsum](const uint8_t byte) { chsum ^= byte; });
     return chsum;
 }
 
@@ -257,7 +257,7 @@ void displaysamples(const NormalSamples& samples)
                    "confid: %s%3u%\e[0m\n",
                    pos, angle, distance, qacolor(quality), quality);
 
-            if (pos == angletoshow.size())
+            if ((size_t)pos == angletoshow.size())
             {
                 printf("\nCollected samples amount: [%zu]\n", samples.size());
                 break;
@@ -328,7 +328,7 @@ void displaysamples(const ExpressSamples& samples)
             printf("[%zd] angle: \e[4m%3d\260\e[0m, dist: \e[4m%5.1fcm\e[0m\n",
                    pos, angle, distance);
 
-            if (pos == angletoshow.size())
+            if ((size_t)pos == angletoshow.size())
             {
                 printf("\nCollected samples amount: [%zu]\n", samples.size());
                 break;
@@ -451,12 +451,12 @@ void readexpressscanning(std::shared_ptr<serial> serialIf)
             auto measurements = getcabindata(
                 {it, it + bytespercabin}, startangleprev, angledelta, cabinnum);
 
-            std::for_each(measurements.begin(), measurements.end(),
-                          [&samples](const Measurement& measurement) {
-                              const auto& [isvalid, data] = measurement;
-                              if (isvalid)
-                                  samples.emplace(data);
-                          });
+            std::ranges::for_each(measurements,
+                                  [&samples](const Measurement& measurement) {
+                                      const auto& [isvalid, data] = measurement;
+                                      if (isvalid)
+                                          samples.emplace(data);
+                                  });
         }
         startangleprev = startanglecurr;
         cabindataprev = cabindatacurr;
@@ -500,14 +500,15 @@ int main(int argc, char* argv[])
         boost::program_options::parse_command_line(argc, argv, desc), vm);
     boost::program_options::notify(vm);
 
-    if (vm.count("help"))
+    if (vm.contains("help"))
     {
         std::cout << desc;
         return 0;
     }
 
-    const auto& device =
-        vm.count("device") ? vm.at("device").as<std::string>() : "/dev/ttyUSB0";
+    const auto& device = vm.contains("device")
+                             ? vm.at("device").as<std::string>()
+                             : "/dev/ttyUSB0";
     try
     {
         std::shared_ptr<serial> serialIf =
