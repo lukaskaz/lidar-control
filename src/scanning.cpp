@@ -8,7 +8,7 @@
 #include <cmath>
 #include <stdexcept>
 
-#define SAMPLESPERSCAN 360
+#define MAXANGLEPERSCAN 360
 
 #define SCANSTARTFLAG 0xA5
 #define SCANSTARTSCAN 0x20
@@ -17,134 +17,100 @@
 void show(const SampleData& data, uint32_t pos)
 {
     auto [angle, distance] = data;
-    printf("\e[%d;1H\a[%u] angle(dgr) \e[4m%3u\e[0m, dist(cm): "
-           "\e[4m%5.1f\e[0m\n",
+    printf("\e[%d;1H[%u] angle(dgr) \e[4m%3u\e[0m, dist(cm): \e[4m%5.1f\e[0m\n",
            5 + pos, pos + 1, angle, distance);
 }
 
 void statustest(int32_t& line, auto& observer)
 {
-    observer.notifyonevent(
-        0, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(0,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
-    observer.notifyonevent(
-        45, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(45,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
-    observer.notifyonevent(
-        90, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(90,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
-    observer.notifyonevent(
-        135, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(135,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
-    observer.notifyonevent(
-        180, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(180,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
-    observer.notifyonevent(
-        225, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(225,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
-    observer.notifyonevent(
-        270, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(270,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
-    observer.notifyonevent(
-        315, [line{line}](const SampleData& data) { show(data, line); });
+    observer.event(315,
+                   [line{line}](const SampleData& data) { show(data, line); });
     line++;
     line++;
 
-    observer.notifyonevent(180, [line{line}](const SampleData& data) {
+    observer.event(180, [line{line}](const SampleData& data) {
         const auto& [angle, distance] = data;
         if (distance < 30)
         {
-            printf("\e[%d;1H\a[%03u] CRITICAL: OBSTACLE TOO CLOSE\e[0m\n",
+            printf("\e[%d;1H[%03u] CRITICAL: OBSTACLE TOO CLOSE\e[0m\n",
                    5 + line, angle);
         }
         else if (distance < 60)
         {
-            printf("\e[%d;1H\a[%03u] WARNING: OBSTACLE NEARBY    \e[0m\n",
+            printf("\e[%d;1H[%03u] WARNING: OBSTACLE NEARBY    \e[0m\n",
                    5 + line, angle);
         }
         else
         {
-            printf("\e[%d;1H\a[%03u] GOOD: OBSTACLE FAR AWAY     \e[0m\n",
+            printf("\e[%d;1H[%03u] GOOD: OBSTACLE FAR AWAY     \e[0m\n",
                    5 + line, angle);
         }
     });
     line++;
 }
 
-std::tuple<bool, uint32_t, double, bool>
-    Normalscan::getdata(bool firstread = false)
+Measurement Normalscan::getdata(bool firstread = false)
 {
-    static constexpr uint32_t packetsize = 5;
+    static constexpr uint32_t packetsize = 5, poorquality = 10;
     std::vector<uint8_t> raw;
     auto recvsize =
-        firstread ? serialIf->read(raw, packetsize, 2000, debug_t::nodebug)
-                  : serialIf->read(raw, packetsize, debug_t::nodebug);
+        firstread ? serialIf->read(raw, 1, 2000) : serialIf->read(raw, 1);
 
-    if (recvsize != packetsize)
-    {
-        throw std::runtime_error(std::string(__func__) +
-                                 ": received packet size is incorrect");
-    }
-
-    // std::cerr << std::hex << "raw: [0]: " << (uint32_t)raw[0]
-    //           << ", [1]: " << (uint32_t)raw[1] << ", [2]: " <<
-    //           (uint32_t)raw[2]
-    //           << ", [3]: " << (uint32_t)raw[3] << ", [4]: " <<
-    //           (uint32_t)raw[4]
-    //           << std::dec << std::endl;
-
-    bool flagbit = ((raw[0] >> 1) ^ raw[0]) & 0x01;
-    bool syncbit = raw[1] & 0x01;
-    if (!flagbit || !syncbit)
-    {
-        // std::cerr << ">> Corrupted: " << newscan << "/" << quality << "/"
-        //          << angle << "/" << distance << "\n";
-        return {false, 0, 0, false};
-        // throw std::runtime_error(std::string(__func__) +
-        //                        ": received packet is corrupted");
-    }
-    else
-    {
-        bool newscan = raw[0] & 0x01;
-        uint32_t quality = 100 * (raw[0] >> 2) / 63;
-        auto angle = static_cast<uint32_t>(
-            lround(((raw[2] << 7) | (raw[1] >> 1)) / 64.));
-        double distance =
-            quality < 10 ? 0. : (((raw[4] << 8) | raw[3]) / 4.) / 10.;
-        return {newscan, angle, distance, true};
-    }
-}
-
-std::tuple<bool, uint32_t, double> Normalscan::getdataflushed()
-{
     while (true)
     {
-        [[maybe_unused]] static constexpr uint32_t packetsize = 5;
-        while (true)
+        bool flagbit = ((raw[0] >> 1) ^ raw[0]) & 0x01;
+        if (flagbit)
         {
-            std::vector<uint8_t> raw;
-            serialIf->read(raw, 1, debug_t::nodebug);
-
-            bool newscan = raw[0] & 0x01;
-            bool flagbit = ((raw[0] >> 1) ^ raw[0]) & 0x01;
-            if (flagbit)
+            recvsize += serialIf->read(raw, 1);
+            bool syncbit = raw[1] & 0x01;
+            if (syncbit)
             {
-                serialIf->read(raw, 1, debug_t::nodebug);
-                bool syncbit = raw[1] & 0x01;
-                if (syncbit)
+                recvsize += serialIf->read(raw, 3);
+                if (recvsize != packetsize)
                 {
-                    serialIf->read(raw, 3, debug_t::nodebug);
-                    uint32_t quality = 100 * (raw[0] >> 2) / 63;
-                    auto angle = static_cast<uint32_t>(
-                        lround(((raw[2] << 7) | (raw[1] >> 1)) / 64.));
-                    double distance =
-                        quality < 10 ? 0.
-                                     : (((raw[4] << 8) | raw[3]) / 4.) / 10.;
-
-                    return {newscan, angle, distance};
+                    throw std::runtime_error(
+                        std::string(__func__) +
+                        ": received packet size is incorrect");
                 }
+
+                [[maybe_unused]] bool newscan = raw[0] & 0x01;
+                uint32_t quality = 100 * (raw[0] >> 2) / 63;
+
+                int32_t angle{};
+                double distance{};
+                bool isvalid = quality > poorquality;
+                if (isvalid)
+                {
+                    angle = static_cast<int32_t>(
+                        lround(((raw[2] << 7) | (raw[1] >> 1)) / 64.));
+                    distance = (((raw[4] << 8) | raw[3]) / 4.) / 10.;
+                }
+                return {isvalid, {angle, distance}};
             }
         }
+        raw.clear();
+        recvsize = serialIf->read(raw, 1);
     }
 }
 
@@ -159,17 +125,16 @@ void Normalscan::run()
     int32_t line{};
     statustest(line, observer);
 
-    auto [newscan, angle, distance, consist] = getdata(true);
+    auto [isvalid, data] = getdata(true);
     while (!Menu::isenterpressed())
     {
-        if (!consist)
+        if (isvalid)
         {
-            std::tie(newscan, angle, distance) = getdataflushed();
+            observer.update(data);
         }
-        observer.update({angle, distance});
-        std::tie(newscan, angle, distance, consist) = getdata();
+        std::tie(isvalid, data) = getdata();
     }
-    printf("\e[%d;1H\a\n\e[?25h", line + 5);
+    printf("\e[%d;1H\n\e[?25h", line + 5);
 }
 
 void Normalscan::requestscan()
@@ -249,7 +214,8 @@ std::array<Measurement, 2>
         anglecomp *= isnegative ? (-1) : 1;
         double angle =
             startangle + (angledelta * measurement / 32.) - anglecomp;
-        return static_cast<int32_t>(lround(angle < 360 ? angle : angle - 360));
+        return static_cast<int32_t>(
+            lround(angle < MAXANGLEPERSCAN ? angle : angle - MAXANGLEPERSCAN));
     };
 
     int32_t anglefirst{};
@@ -300,7 +266,7 @@ void Expressscan::runlegacy()
         auto angledelta = startanglecurr - startangleprev;
         if (angledelta < 0)
         {
-            angledelta += 360;
+            angledelta += MAXANGLEPERSCAN;
             newscan = true;
         }
 
@@ -322,7 +288,7 @@ void Expressscan::runlegacy()
         startangleprev = startanglecurr;
         cabindataprev = cabindatacurr;
     }
-    printf("\e[%d;1H\a\n\e[?25h", line + 5);
+    printf("\e[%d;1H\n\e[?25h", line + 5);
 }
 
 Measurement Expressscan::getdensedata(std::vector<uint8_t>&& cabin,
@@ -331,8 +297,8 @@ Measurement Expressscan::getdensedata(std::vector<uint8_t>&& cabin,
 {
     auto calcangle = [startangle, angledelta](uint8_t measurement) {
         double angle = startangle + (angledelta * measurement / 40.);
-        return static_cast<uint32_t>(
-            std::lround(angle < 360 ? angle : angle - 360));
+        return static_cast<uint32_t>(std::lround(
+            angle < MAXANGLEPERSCAN ? angle : angle - MAXANGLEPERSCAN));
     };
 
     uint32_t angle{};
@@ -367,7 +333,7 @@ void Expressscan::rundense()
         auto angledelta = startanglecurr - startangleprev;
         if (angledelta <= 0)
         {
-            angledelta += 360;
+            angledelta += MAXANGLEPERSCAN;
             newscan = true;
         }
 
@@ -386,7 +352,7 @@ void Expressscan::rundense()
         startangleprev = startanglecurr;
         cabindataprev = cabindatacurr;
     }
-    printf("\e[%d;1H\a\n\e[?25h", line + 5);
+    printf("\e[%d;1H\n\e[?25h", line + 5);
 }
 
 void Expressscan::stopscan()

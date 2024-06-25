@@ -49,10 +49,10 @@ class Observer
   public:
     Observer();
 
-    void notifyonevent(int32_t, NotifyFunc&&);
+    void event(int32_t, NotifyFunc&&);
     void update(const SampleData& data);
 
   private:
     std::unordered_map<int32_t, SampleMonitor> samples;
-    std::map<int32_t, UpdateFunc> updater;
+    std::unordered_map<int32_t, UpdateFunc> updater;
 };
