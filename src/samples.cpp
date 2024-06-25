@@ -5,6 +5,8 @@
 #include <limits>
 #include <stdexcept>
 
+#define MAXANGLEPERSCAN 360
+
 Sample::Sample(int32_t angle,
                std::shared_ptr<std::vector<NotifyFunc>> notifiers) :
     angle{angle},
@@ -52,8 +54,11 @@ SampleMonitor::SampleMonitor(int32_t angle, int32_t supportnum)
     samples.emplace_back(angle, notifiers);
     for (int32_t num{1}; num < supportnum; num += 2)
     {
-        auto prev = angle - num < 0 ? 360 + angle - num : angle - num;
-        auto next = angle + num >= 360 ? angle + num - 360 : angle + num;
+        auto prev =
+            angle - num < 0 ? MAXANGLEPERSCAN + angle - num : angle - num;
+        auto next = angle + num >= MAXANGLEPERSCAN
+                        ? angle + num - MAXANGLEPERSCAN
+                        : angle + num;
         samples.emplace_back(prev, notifiers);
         samples.emplace_back(next, notifiers);
     }
@@ -72,7 +77,7 @@ std::vector<Sample>& SampleMonitor::get()
 Observer::Observer()
 {}
 
-void Observer::notifyonevent(int32_t angle, NotifyFunc&& func)
+void Observer::event(int32_t angle, NotifyFunc&& func)
 {
     auto [it, ret] = samples.emplace(angle, SampleMonitor(angle));
     it->second.addnotifier(std::move(func));

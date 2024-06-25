@@ -26,8 +26,7 @@ class Normalscan
     Observer observer;
 
     void requestscan();
-    std::tuple<bool, uint32_t, double, bool> getdata(bool);
-    std::tuple<bool, uint32_t, double> getdataflushed();
+    Measurement getdata(bool);
     void stopscan();
 };
 
