@@ -74,9 +74,9 @@ Measurement Normalscan::getdata(bool firstread = false)
 {
     static constexpr uint32_t packetsize = 5, poorquality = 10;
     std::vector<uint8_t> raw;
+
     auto recvsize =
         firstread ? serialIf->read(raw, 1, 2000) : serialIf->read(raw, 1);
-
     while (true)
     {
         bool flagbit = ((raw[0] >> 1) ^ raw[0]) & 0x01;
@@ -86,7 +86,8 @@ Measurement Normalscan::getdata(bool firstread = false)
             bool syncbit = raw[1] & 0x01;
             if (syncbit)
             {
-                recvsize += serialIf->read(raw, 3);
+                size_t remainingsize = packetsize - recvsize;
+                recvsize += serialIf->read(raw, remainingsize);
                 if (recvsize != packetsize)
                 {
                     throw std::runtime_error(
@@ -166,41 +167,51 @@ std::pair<double, std::vector<uint8_t>>
     static constexpr uint32_t packetsize = 84;
     std::vector<uint8_t> raw;
 
-    auto recvsize = firstread ? serialIf->read(raw, packetsize, 2000)
-                              : serialIf->read(raw, packetsize);
-    if (recvsize != packetsize)
+    auto recvsize =
+        firstread ? serialIf->read(raw, 1, 2000) : serialIf->read(raw, 1);
+    while (true)
     {
-        throw std::runtime_error(std::string(__func__) +
-                                 ": received packet size is incorrect");
+        uint8_t sync1 = (raw[0] & 0xF0) >> 4;
+        if (sync1 == 0x0A)
+        {
+            recvsize += serialIf->read(raw, 1);
+            uint8_t sync2 = (raw[1] & 0xF0) >> 4;
+            if (sync2 == 0x05)
+            {
+                recvsize += serialIf->read(raw, 2);
+                bool startflag = raw[3] & 0x80 ? true : false;
+                if (firstread && !startflag)
+                {
+                    throw std::runtime_error(std::string(__func__) +
+                                             ": first packet has no start "
+                                             "flag, probably hw malfunction");
+                }
+
+                size_t remainingsize = packetsize - recvsize;
+                recvsize += serialIf->read(raw, remainingsize);
+                if (recvsize != packetsize)
+                {
+                    throw std::runtime_error(
+                        std::string(__func__) +
+                        ": received packet size is incorrect");
+                }
+
+                uint8_t chsumrecv =
+                    (uint8_t)((raw[1] & 0x0F) << 4) | (raw[0] & 0x0F);
+                uint8_t chsumcalc = getchecksum({raw.begin() + 2, raw.end()});
+                if (chsumrecv == chsumcalc)
+                {
+                    double startangle =
+                        static_cast<double>(((raw[3] & 0x7F) << 8) | raw[2]) /
+                        64.;
+                    std::vector<uint8_t> cabindata{raw.begin() + 4, raw.end()};
+                    return {startangle, std::move(cabindata)};
+                }
+            }
+        }
+        raw.clear();
+        recvsize = serialIf->read(raw, 1);
     }
-
-    uint8_t sync1 = (raw[0] & 0xF0) >> 4, sync2 = (raw[1] & 0xF0) >> 4;
-    if (sync1 != 0xA || sync2 != 0x5)
-    {
-        throw std::runtime_error(std::string(__func__) +
-                                 ": sync bytes not correct");
-    }
-
-    bool startflag = raw[3] & 0x80 ? true : false;
-    if (firstread && !startflag)
-    {
-        throw std::runtime_error(std::string(__func__) +
-                                 ": first packet has no start flag");
-    }
-
-    uint8_t chsumrecv = (uint8_t)((raw[1] & 0x0F) << 4) | (raw[0] & 0x0F);
-    uint8_t chsumcalc = getchecksum({raw.begin() + 2, raw.end()});
-    if (chsumrecv != chsumcalc)
-    {
-        throw std::runtime_error(std::string(__func__) +
-                                 ": checksum not valid");
-    }
-
-    double startangle =
-        static_cast<double>(((raw[3] & 0x7F) << 8) | raw[2]) / 64.;
-    std::vector<uint8_t> cabindata{raw.begin() + 4, raw.end()};
-
-    return {startangle, std::move(cabindata)};
 }
 
 std::array<Measurement, 2>
