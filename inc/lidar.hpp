@@ -17,7 +17,7 @@ class LidarIf
 class Aseries : public LidarIf, public Common
 {
   public:
-    static constexpr std::string baud{"115200"};
+    static constexpr auto baud{"115200"};
     static constexpr speed_t speed{B115200};
     static constexpr seriesid series{seriesid::amodel};
 
@@ -32,7 +32,7 @@ class Aseries : public LidarIf, public Common
 class Cseries : public LidarIf, public Common
 {
   public:
-    static constexpr std::string baud{"460800"};
+    static constexpr auto baud{"460800"};
     static constexpr speed_t speed{B460800};
     static constexpr seriesid series{seriesid::cmodel};
 
@@ -58,7 +58,7 @@ template <typename T>
     requires requires(T t, std::shared_ptr<serial> serial, seriesid series) {
         {
             t.baud
-        } -> std::same_as<const std::string&>;
+        } -> std::same_as<const char* const&>;
         {
             t.speed
         } -> std::same_as<const speed_t&>;
