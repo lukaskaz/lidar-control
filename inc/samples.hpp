@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -49,7 +51,7 @@ class Observer
   public:
     Observer();
 
-    void event(int32_t, NotifyFunc&&);
+    void event(int32_t, NotifyFunc);
     void update(const SampleData& data);
 
   private:

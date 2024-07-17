@@ -77,7 +77,7 @@ std::vector<Sample>& SampleMonitor::get()
 Observer::Observer()
 {}
 
-void Observer::event(int32_t angle, NotifyFunc&& func)
+void Observer::event(int32_t angle, NotifyFunc func)
 {
     auto [it, ret] = samples.emplace(angle, SampleMonitor(angle));
     it->second.addnotifier(std::move(func));

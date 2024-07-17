@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <future>
+#include <iomanip>
+#include <iostream>
 #include <stdexcept>
 
 #define MAXANGLEPERSCAN 360
@@ -14,60 +17,65 @@
 #define SCANSTARTSCAN 0x20
 #define SCANSTOPSCAN 0x25
 
-void show(const SampleData& data, uint32_t pos)
+void show(const SampleData& data, uint32_t pos, bool toshow)
 {
-    auto [angle, distance] = data;
-    printf("\e[%d;1H[%u] angle(dgr) \e[4m%3u\e[0m, dist(cm): \e[4m%5.1f\e[0m\n",
-           5 + pos, pos + 1, angle, distance);
+    static constexpr uint32_t initpos{5};
+    if (toshow)
+    {
+        uint32_t idx = pos + 1;
+        auto [angle, distance] = data;
+        std::cout << "\e[" << initpos + pos << ";1H[" << std::setfill('0')
+                  << std::setw(2) << idx << "] angle(dgr) \e[4m"
+                  << std::setfill('0') << std::setw(3) << angle
+                  << "\e[0m, dist(cm): \e[4m" << std::setfill('0')
+                  << std::setw(6) << std::setprecision(1) << std::fixed
+                  << distance << "\e[0m\n";
+    }
 }
 
-void statustest(int32_t& line, auto& observer)
+void statustest(auto& obs, bool& toshow)
 {
-    observer.event(0,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    observer.event(45,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    observer.event(90,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    observer.event(135,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    observer.event(180,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    observer.event(225,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    observer.event(270,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    observer.event(315,
-                   [line{line}](const SampleData& data) { show(data, line); });
-    line++;
-    line++;
+    int32_t line{0}, lines{12};
+    for (auto angle{0}, last{359}; angle <= last; angle += 360 / lines)
+    {
+        obs.event(angle, [line, &toshow](const SampleData& data) {
+            show(data, line, toshow);
+        });
+        line++;
+    }
 
-    observer.event(180, [line{line}](const SampleData& data) {
+    static constexpr uint32_t initpos{5};
+    obs.event(180, [line{initpos + line + 1}](const SampleData& data) {
         const auto& [angle, distance] = data;
+        auto dist{static_cast<uint32_t>(distance)};
+        std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
         if (distance < 30)
         {
-            printf("\e[%d;1H[%03u] CRITICAL: OBSTACLE TOO CLOSE\e[0m\n",
-                   5 + line, angle);
+            std::cout << "[" << std::setfill('0') << std::setw(3) << angle
+                      << "dgr@" << std::setfill('0') << std::setw(3) << dist
+                      << "cm] CRITICAL: OBSTACLE TOO CLOSE\n";
         }
         else if (distance < 60)
         {
-            printf("\e[%d;1H[%03u] WARNING: OBSTACLE NEARBY    \e[0m\n",
-                   5 + line, angle);
+            std::cout << "[" << std::setfill('0') << std::setw(3) << angle
+                      << "dgr@" << std::setfill('0') << std::setw(3) << dist
+                      << "cm] WARNING: OBSTACLE NEARBY\n";
         }
         else
         {
-            printf("\e[%d;1H[%03u] GOOD: OBSTACLE FAR AWAY     \e[0m\n",
-                   5 + line, angle);
+            std::cout << "[" << std::setfill('0') << std::setw(3) << angle
+                      << "dgr@" << std::setfill('0') << std::setw(3) << dist
+                      << "cm] GOOD: OBSTACLE FAR AWAY\n";
         }
     });
-    line++;
+}
+
+void ScanningIf::releasescan()
+{
+    serialIf->write({SCANSTARTFLAG, SCANSTOPSCAN});
+    std::vector<uint8_t> resp;
+    while (serialIf->read(resp, 250))
+        ;
 }
 
 Measurement Normalscan::getdata(bool firstread = false)
@@ -117,25 +125,45 @@ Measurement Normalscan::getdata(bool firstread = false)
 
 void Normalscan::run()
 {
-    system("clear");
-    printf("\033[1;1HNormal 360 scan started on\n%s\n"
-           "> Press enter to stop\n\033[5;1H\e[?25l",
-           gettimestr().c_str());
-    requestscan();
-
-    int32_t line{};
-    statustest(line, observer);
-
-    auto [isvalid, data] = getdata(true);
-    while (!Menu::isenterpressed())
+    static bool toshow{};
+    if (!running)
     {
-        if (isvalid)
-        {
-            observer.update(data);
-        }
-        std::tie(isvalid, data) = getdata();
+        running = true;
+
+        toshow = true;
+        statustest(observer, toshow);
+
+        scanning = std::make_shared<std::future<void>>(
+            std::async(std::launch::async, [this] {
+                std::cout << "\e[?25l";
+                requestscan();
+                auto [isvalid, data] = getdata(true);
+                while (running)
+                {
+                    if (isvalid)
+                    {
+                        observer.update(data);
+                    }
+                    std::tie(isvalid, data) = getdata();
+                }
+                releasescan();
+                std::cout << "\e[?25h";
+            }));
+
+        system("clear");
+        std::cout << "Normal 360 scan started @ " << gettimestr() << "\n";
+        getchar();
+        toshow = false;
     }
-    printf("\e[%d;1H\n\e[?25h", line + 5);
+}
+
+void Normalscan::stop()
+{
+    if (running)
+    {
+        running = false;
+        scanning->wait();
+    }
 }
 
 void Normalscan::requestscan()
@@ -145,15 +173,7 @@ void Normalscan::requestscan()
     serialIf->read(resp, 7);
 }
 
-void Normalscan::stopscan()
-{
-    serialIf->write({SCANSTARTFLAG, SCANSTOPSCAN});
-    std::vector<uint8_t> resp;
-    while (serialIf->read(resp, 250))
-        ;
-}
-
-void Expressscan::requestscan()
+void ExpressscanIf::requestscan()
 {
     serialIf->write(
         {SCANSTARTFLAG, 0x82, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22});
@@ -162,7 +182,7 @@ void Expressscan::requestscan()
 }
 
 std::pair<double, std::vector<uint8_t>>
-    Expressscan::getbasedata(bool firstread = false)
+    ExpressscanIf::getbasedata(bool firstread = false)
 {
     static constexpr uint32_t packetsize = 84;
     std::vector<uint8_t> raw;
@@ -215,8 +235,9 @@ std::pair<double, std::vector<uint8_t>>
 }
 
 std::array<Measurement, 2>
-    Expressscan::getlegacydata(std::vector<uint8_t>&& cabin, double startangle,
-                               double angledelta, uint8_t cabinnum)
+    Expresslegacyscan::getcabindata(std::vector<uint8_t>&& cabin,
+                                    double startangle, double angledelta,
+                                    uint8_t cabinnum)
 {
     auto calcangle = [startangle, angledelta](uint8_t anglecompq3,
                                               uint8_t measurement) {
@@ -257,54 +278,69 @@ std::array<Measurement, 2>
              {issecondvalid, {anglesecond, distancesecond / 10.}}}};
 }
 
-void Expressscan::runlegacy()
+void Expresslegacyscan::run()
 {
-    system("clear");
-    printf("\033[1;1HExpress 360 legacy scan started on\n%s\n"
-           "> Press enter to stop\n\033[5;1H\e[?25l",
-           gettimestr().c_str());
-    requestscan();
-
-    int32_t line{};
-    statustest(line, observer);
-
-    constexpr uint8_t bytespercabin{5};
-    [[maybe_unused]] bool newscan{false};
-    auto [startangleprev, cabindataprev] = getbasedata(true);
-    while (!Menu::isenterpressed())
+    if (!running)
     {
-        auto [startanglecurr, cabindatacurr] = getbasedata();
-        auto angledelta = startanglecurr - startangleprev;
-        if (angledelta < 0)
-        {
-            angledelta += MAXANGLEPERSCAN;
-            newscan = true;
-        }
+        running = true;
+        scanning = std::make_shared<std::future<void>>(
+            std::async(std::launch::async, [this] {
+                requestscan();
+                constexpr uint8_t bytespercabin{5};
+                [[maybe_unused]] bool newscan{false};
+                auto [startangleprev, cabindataprev] = getbasedata(true);
+                while (running)
+                {
+                    auto [startanglecurr, cabindatacurr] = getbasedata();
+                    auto angledelta = startanglecurr - startangleprev;
+                    if (angledelta < 0)
+                    {
+                        angledelta += MAXANGLEPERSCAN;
+                        newscan = true;
+                    }
 
-        for (auto it = cabindataprev.cbegin(); it != cabindataprev.cend();
-             std::advance(it, bytespercabin))
-        {
-            auto cabinnum = static_cast<uint8_t>(
-                std::distance(cabindataprev.cbegin(), it) / bytespercabin);
-            auto measurements = getlegacydata(
-                {it, it + bytespercabin}, startangleprev, angledelta, cabinnum);
+                    for (auto it = cabindataprev.cbegin();
+                         it != cabindataprev.cend();
+                         std::advance(it, bytespercabin))
+                    {
+                        auto cabinnum = static_cast<uint8_t>(
+                            std::distance(cabindataprev.cbegin(), it) /
+                            bytespercabin);
+                        auto measurements =
+                            getcabindata({it, it + bytespercabin},
+                                         startangleprev, angledelta, cabinnum);
 
-            std::ranges::for_each(measurements,
-                                  [this](Measurement& measurement) {
-                                      auto [isvalid, data] = measurement;
-                                      if (isvalid)
-                                          observer.update(data);
-                                  });
-        }
-        startangleprev = startanglecurr;
-        cabindataprev = cabindatacurr;
+                        std::ranges::for_each(
+                            measurements, [this](Measurement& measurement) {
+                                auto [isvalid, data] = measurement;
+                                if (isvalid)
+                                    observer.update(data);
+                            });
+                    }
+                    startangleprev = startanglecurr;
+                    cabindataprev = cabindatacurr;
+                }
+                releasescan();
+            }));
+
+        system("clear");
+        std::cout << "Express legacy 360 scan started @ " << gettimestr()
+                  << "\n";
     }
-    printf("\e[%d;1H\n\e[?25h", line + 5);
 }
 
-Measurement Expressscan::getdensedata(std::vector<uint8_t>&& cabin,
-                                      double startangle, double angledelta,
-                                      uint8_t cabinnum)
+void Expresslegacyscan::stop()
+{
+    if (running)
+    {
+        running = false;
+        scanning->wait();
+    }
+}
+
+Measurement Expressdensescan::getcabindata(std::vector<uint8_t>&& cabin,
+                                           double startangle, double angledelta,
+                                           uint8_t cabinnum)
 {
     auto calcangle = [startangle, angledelta](uint8_t measurement) {
         double angle = startangle + (angledelta * measurement / 40.);
@@ -312,7 +348,7 @@ Measurement Expressscan::getdensedata(std::vector<uint8_t>&& cabin,
             angle < MAXANGLEPERSCAN ? angle : angle - MAXANGLEPERSCAN));
     };
 
-    uint32_t angle{};
+    int32_t angle{};
     uint32_t distance = (cabin[0] & 0xFF) | (cabin[1] << 8);
 
     bool isvalid = distance != 0;
@@ -324,52 +360,62 @@ Measurement Expressscan::getdensedata(std::vector<uint8_t>&& cabin,
     return {isvalid, {angle, distance / 10.}};
 }
 
-void Expressscan::rundense()
+void Expressdensescan::run()
 {
-    system("clear");
-    printf("\033[1;1HExpress 360 dense scan started on\n%s\n"
-           "> Press enter to stop\n\033[5;1H\e[?25l",
-           gettimestr().c_str());
-    requestscan();
-
-    int32_t line{};
-    statustest(line, observer);
-
-    constexpr uint8_t bytespercabin{2};
-    [[maybe_unused]] bool newscan{false};
-    auto [startangleprev, cabindataprev] = getbasedata(true);
-    while (!Menu::isenterpressed())
+    if (!running)
     {
-        auto [startanglecurr, cabindatacurr] = getbasedata(false);
-        auto angledelta = startanglecurr - startangleprev;
-        if (angledelta <= 0)
-        {
-            angledelta += MAXANGLEPERSCAN;
-            newscan = true;
-        }
+        running = true;
+        scanning = std::make_shared<std::future<void>>(
+            std::async(std::launch::async, [this] {
+                std::cout << "\e[?25l";
+                requestscan();
+                constexpr uint8_t bytespercabin{2};
+                [[maybe_unused]] bool newscan{false};
+                auto [startangleprev, cabindataprev] = getbasedata(true);
 
-        for (auto it = cabindataprev.cbegin(); it != cabindataprev.cend();
-             std::advance(it, bytespercabin))
-        {
-            auto cabinnum = static_cast<uint8_t>(
-                std::distance(cabindataprev.cbegin(), it) / bytespercabin);
-            auto [isvalid, data] = getdensedata(
-                {it, it + bytespercabin}, startangleprev, angledelta, cabinnum);
-            if (isvalid)
-            {
-                observer.update(data);
-            }
-        }
-        startangleprev = startanglecurr;
-        cabindataprev = cabindatacurr;
+                while (running)
+                {
+                    auto [startanglecurr, cabindatacurr] = getbasedata(false);
+                    auto angledelta = startanglecurr - startangleprev;
+                    if (angledelta <= 0)
+                    {
+                        angledelta += MAXANGLEPERSCAN;
+                        newscan = true;
+                    }
+
+                    for (auto it = cabindataprev.cbegin();
+                         it != cabindataprev.cend();
+                         std::advance(it, bytespercabin))
+                    {
+                        auto cabinnum = static_cast<uint8_t>(
+                            std::distance(cabindataprev.cbegin(), it) /
+                            bytespercabin);
+                        auto [isvalid, data] =
+                            getcabindata({it, it + bytespercabin},
+                                         startangleprev, angledelta, cabinnum);
+                        if (isvalid)
+                        {
+                            observer.update(data);
+                        }
+                    }
+                    startangleprev = startanglecurr;
+                    cabindataprev = cabindatacurr;
+                }
+                releasescan();
+                std::cout << "\e[?25h";
+            }));
+
+        system("clear");
+        std::cout << "Express dense 360 scan started @ " << gettimestr()
+                  << "\n";
     }
-    printf("\e[%d;1H\n\e[?25h", line + 5);
 }
 
-void Expressscan::stopscan()
+void Expressdensescan::stop()
 {
-    serialIf->write({SCANSTARTFLAG, SCANSTOPSCAN});
-    std::vector<uint8_t> resp;
-    while (serialIf->read(resp, 250))
-        ;
+    if (running)
+    {
+        running = false;
+        scanning->wait();
+    }
 }
