@@ -4,7 +4,6 @@
 #include "serial.hpp"
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,35 +29,37 @@ enum class seriesid
 class Common
 {
   public:
-    explicit Common()
-    {}
-    virtual ~Common(){
-        // stopscanning();
-    };
+    virtual ~Common(){};
+    explicit Common(std::shared_ptr<serial>, const std::string&,
+                    const std::string&);
+
+    static std::pair<bool, std::string> detect(std::shared_ptr<serial>,
+                                               seriesid);
 
   protected:
-    bool detect(const std::string&, speed_t, seriesid);
+    static std::pair<seriesid, std::string>
+        readmodeltype(std::shared_ptr<serial>);
 
+    virtual void observe(int32_t, const NotifyFunc&);
     virtual void readinfo();
     virtual void readstatus();
     virtual void readsamplerate();
     virtual void readconfiguration();
 
-    virtual void readnormalscan()
-    {
-        Normalscan(serialIf).run();
-    }
-    virtual void readexpressscan() = 0;
+    virtual void runnormalscan();
+    virtual void stopnormalscan();
+
+    virtual void runexpressscan();
+    virtual void stopexpressscan();
 
     virtual void exitprogram();
-    virtual std::pair<seriesid, std::string> readmodeltype();
     void getpacket(std::vector<uint8_t>&&, std::vector<uint8_t>&, uint8_t,
                    bool);
 
   protected:
-    std::string device;
-    std::string baud;
-    seriesid modelseries;
-    std::string modelname;
     std::shared_ptr<serial> serialIf;
+    std::string device;
+    std::string modelname;
+    std::shared_ptr<ScanningIf> normalscan;
+    std::shared_ptr<ScanningIf> expressscan;
 };

@@ -2,28 +2,27 @@
 
 #include "helpers.hpp"
 
+#include <algorithm>
 #include <iostream>
+#include <sstream>
 #include <unordered_map>
 
-bool Common::detect(const std::string& device, speed_t baud, seriesid series)
+Common::Common(std::shared_ptr<serial> serialIf, const std::string& device,
+               const std::string& name) :
+    serialIf{serialIf},
+    device{device}, modelname{name}
+{}
+
+std::pair<bool, std::string> Common::detect(std::shared_ptr<serial> serialIf,
+                                            seriesid series)
 {
-    static const std::unordered_map<uint32_t, std::string> speedtostring = {
-        {B115200, "115200"}, {B460800, "460800"}};
-    this->device = device;
-    this->baud = speedtostring.at(baud);
-    serialIf = std::make_shared<usb>(device, baud);
-    std::tie(modelseries, modelname) = readmodeltype();
-    if (modelseries != series)
-    {
-        serialIf.reset();
-        return false;
-    }
-    return true;
+    auto [modelseries, modelname] = readmodeltype(serialIf);
+    return {modelseries == series, modelname};
 }
 
-std::pair<seriesid, std::string> Common::readmodeltype()
+std::pair<seriesid, std::string>
+    Common::readmodeltype(std::shared_ptr<serial> serialIf)
 {
-
     seriesid series{seriesid::unknown};
     std::string name;
     serialIf->write({SCANSTARTFLAG, SCANGETINFOCMD});
@@ -67,62 +66,81 @@ std::pair<seriesid, std::string> Common::readmodeltype()
     return {series, name};
 }
 
+void Common::observe(int32_t angle, const NotifyFunc& notifier)
+{
+    normalscan->observer.event(angle, notifier);
+    expressscan->observer.event(angle, notifier);
+}
+
 void Common::readinfo()
 {
     serialIf->write({SCANSTARTFLAG, SCANGETINFOCMD});
     std::vector<uint8_t> resp;
     serialIf->read(resp, 27);
 
-    printf("Model: 0x%02X\n", resp[7]);
-    printf("Firmware: %u.%u\n", resp[9], resp[8]);
-    printf("Hardware: 0x%02X\n", resp[10]);
-    printf("Serial number:");
-    for (int i = 11, j = 0; i < 27; i++, j++)
-        if (j % 4)
-            printf("0x%02X ", resp[i]);
-        else
-            printf("\n0x%02X ", resp[i]);
-    printf("\n");
+    std::ostringstream oss;
+    oss << std::showbase << std::hex << (uint32_t)resp[7];
+    std::string model{oss.str()};
+    oss.str(std::string{});
+    oss << std::dec << (uint32_t)resp[9] << "." << (uint32_t)resp[8];
+    std::string firmware{oss.str()};
+    oss.str(std::string{});
+    oss << std::hex << std::showbase << (uint32_t)resp[10];
+    std::string hardware{oss.str()};
+    oss.str(std::string{});
+    for (uint8_t byte = 11; byte < 27; byte++)
+    {
+        oss << std::hex << std::noshowbase << (uint32_t)resp[byte];
+    }
+    std::string serialnum{oss.str()};
+
+    std::cout << "Model: " << model << "\n";
+    std::cout << "Firmware: " << firmware << "\n";
+    std::cout << "Hardware: " << hardware << "\n";
+    std::cout << "Serialnum: " << serialnum << "\n";
 }
 
 void Common::readstatus()
 {
-    enum states
+    enum class state
     {
-        STFIRST = 0,
-        STGOOD = STFIRST,
-        STWARN,
-        STERR,
-        STLAST = STERR
+        good,
+        warn,
+        err
     };
-    static const char* statesinfo[] = {[STGOOD] = "\e[1;32mOk\e[0m",
-                                       [STWARN] = "\e[1;33mWarning\e[0m",
-                                       [STERR] = "\e[1;31mERROR\e[0m"};
+    static const std::unordered_map<state, std::string> status = {
+        {state::good, "\e[1;32mOk\e[0m"},
+        {state::warn, "\e[1;33mWarning\e[0m"},
+        {state::err, "\e[1;31mERROR\e[0m"}};
 
     serialIf->write({SCANSTARTFLAG, SCANGETSTATCMD});
     std::vector<uint8_t> resp;
     serialIf->read(resp, 10);
 
-    uint8_t status = resp.at(7);
-    if (STLAST >= status)
+    state currstate = static_cast<state>(resp.at(7));
+    if (status.contains(currstate))
     {
-        const char* const info = statesinfo[status];
-        printf("Status is: %s\n", info);
+        std::cout << "Current status: " << status.at(currstate) << "\n";
     }
     else
     {
-        printf("Cannot recognize status: %u\n", status);
+        std::cerr << "Cannot recognize status: " << (uint32_t)currstate << "\n";
     }
 }
 
 void Common::readsamplerate()
 {
+    static constexpr auto makeval = [](uint8_t hi, uint8_t low) -> uint16_t {
+        return hi << 8 | low;
+    };
     serialIf->write({SCANSTARTFLAG, SCANGETSRATECMD});
     std::vector<uint8_t> resp;
     serialIf->read(resp, 11);
+    auto normalscantime{makeval(resp[8], resp[7])};
+    auto expressscantime{makeval(resp[10], resp[9])};
 
-    printf("Single std scan time: %u ms\n", (resp[8] << 8) | resp[7]);
-    printf("Single express scan time: %u ms\n", (resp[10] << 8) | resp[9]);
+    std::cout << "Normal scan: " << normalscantime << "ms\n";
+    std::cout << "Express scan: " << expressscantime << "ms\n";
 }
 
 void Common::readconfiguration()
@@ -130,64 +148,112 @@ void Common::readconfiguration()
     constexpr uint8_t reqdatasize = 4, respdatasize = reqdatasize,
                       resppacketsize = respdatasize + 7;
 
+    struct Config
+    {
+        struct Mode
+        {
+            uint32_t id;
+            std::string name;
+            uint32_t uscostpersample;
+            uint32_t maxsamplerate;
+            uint32_t maxdistance;
+            uint32_t answercmdtype;
+        };
+        uint32_t modecnt;
+        uint32_t typical;
+        std::vector<Mode> modes;
+    } config;
+
     std::vector<uint8_t> resp;
     getpacket({SCANSTARTFLAG, SCANGETCONFCMD, reqdatasize, 0x70, 0, 0, 0}, resp,
               resppacketsize + 2, true);
-    uint32_t modescount = resp[12] << 8 | resp[11];
-    std::cout << "Scan modes count: " << modescount << "\n";
+    config.modecnt = resp[12] << 8 | resp[11];
 
     resp.clear();
     getpacket({SCANSTARTFLAG, SCANGETCONFCMD, reqdatasize, 0x7C, 0, 0, 0}, resp,
               resppacketsize + 2, true);
-    uint32_t typicalmode = resp[12] << 8 | resp[11];
-    std::cout << "Typical scan mode: " << typicalmode << "\n";
+    config.typical = resp[12] << 8 | resp[11];
 
-    for (uint8_t mode = 0; mode < modescount; mode++)
+    for (uint8_t mode = 0; mode < config.modecnt; mode++)
     {
         resp.clear();
         getpacket({SCANSTARTFLAG, SCANGETCONFCMD, reqdatasize + 2, 0x7F, 0, 0,
                    0, mode, 0},
                   resp, resppacketsize + 200, true);
         std::string name(resp.begin() + 11, resp.end());
-        std::cout << "Info for mode " << (int)mode << " [" << name << "]";
-        if (mode == typicalmode)
-        {
-            std::cout << " -> TYPICAL";
-        }
-        std::cout << "\n";
 
         resp.clear();
         getpacket({SCANSTARTFLAG, SCANGETCONFCMD, reqdatasize + 2, 0x71, 0, 0,
                    0, mode, 0},
                   resp, resppacketsize + 4, true);
-
         uint32_t uscostpersample =
             resp[14] << 24 | resp[13] << 16 | resp[12] << 8 | resp[11];
         uscostpersample /= 256;
-        std::cout << "\t> cost per sample: " << uscostpersample << " us\n";
-        std::cout << "\t> max sample rate: " << 1000 * 1000 / uscostpersample
-                  << " sps\n";
+        uint32_t maxsamplerate = 1000 * 1000 / uscostpersample;
 
         resp.clear();
         getpacket({SCANSTARTFLAG, SCANGETCONFCMD, reqdatasize + 2, 0x74, 0, 0,
                    0, mode, 0},
                   resp, resppacketsize + 4, true);
-
         uint32_t maxdistance =
             resp[14] << 24 | resp[13] << 16 | resp[12] << 8 | resp[11];
         maxdistance /= 256;
-        std::cout << "\t> max distance: " << maxdistance << "m\n";
 
         resp.clear();
         getpacket({SCANSTARTFLAG, SCANGETCONFCMD, reqdatasize + 2, 0x75, 0, 0,
                    0, mode, 0},
                   resp, resppacketsize + 1, true);
-
         uint32_t answercmdtype = resp[11];
-        std::cout << "\t> answer cmd type: " << std::hex << std::showbase
-                  << answercmdtype << std::noshowbase << std::dec << "\n";
-        std::cout << "\n";
+
+        config.modes.emplace_back(mode, name, uscostpersample, maxsamplerate,
+                                  maxdistance, answercmdtype);
     }
+
+    std::cout << "Scan modes count: " << config.modecnt << "\n";
+    std::cout << "Typical scan mode: " << config.typical << "\n";
+    std::ranges::for_each(config.modes, [typical{config.typical}](
+                                            const auto& mode) {
+        std::cout << "Info for mode " << mode.id << " [" << mode.name << "]";
+        if (mode.id == typical)
+        {
+            std::cout << " -> TYPICAL";
+        }
+        std::cout << "\n";
+        std::cout << "\t> cost per sample: " << mode.uscostpersample << " us\n";
+        std::cout << "\t> max sample rate: " << mode.maxsamplerate << " sps\n";
+        std::cout << "\t> max distance: " << mode.maxdistance << "m\n";
+        std::cout << "\t> answer cmd type: " << std::hex << std::showbase
+                  << mode.answercmdtype << std::noshowbase << std::dec << "\n";
+        std::cout << "\n";
+    });
+}
+
+void Common::runnormalscan()
+{
+    if (expressscan->isrunning())
+    {
+        expressscan->stop();
+    }
+    normalscan->run();
+}
+
+void Common::stopnormalscan()
+{
+    normalscan->stop();
+}
+
+void Common::runexpressscan()
+{
+    if (normalscan->isrunning())
+    {
+        normalscan->stop();
+    }
+    expressscan->run();
+}
+
+void Common::stopexpressscan()
+{
+    expressscan->stop();
 }
 
 void Common::getpacket(std::vector<uint8_t>&& req, std::vector<uint8_t>& resp,
@@ -203,5 +269,5 @@ void Common::getpacket(std::vector<uint8_t>&& req, std::vector<uint8_t>& resp,
 
 void Common::exitprogram()
 {
-    printf("Cleaning and closing\n");
+    std::cout << "Cleaning and closing\n";
 }
