@@ -18,16 +18,12 @@ class ScanningIf
     Observer observer;
 
   public:
-    ScanningIf(std::shared_ptr<serial> serialIf) : serialIf{serialIf}
-    {}
+    ScanningIf(std::shared_ptr<serial>);
     virtual ~ScanningIf()
     {}
     virtual void run() = 0;
-    virtual void stop() = 0;
-    virtual bool isrunning() const
-    {
-        return running;
-    }
+    virtual void stop();
+    virtual bool isrunning() const;
 
   protected:
     std::atomic<bool> running{false};
@@ -35,10 +31,12 @@ class ScanningIf
     std::shared_ptr<std::future<void>> scanning;
 
     virtual void requestscan() = 0;
-    void releasescan();
+    virtual void releasescan();
 };
 
-class Normalscan : public ScanningIf
+class Normalscan :
+    public ScanningIf,
+    public std::enable_shared_from_this<Normalscan>
 {
   public:
     explicit Normalscan(std::shared_ptr<serial> serialIf) : ScanningIf(serialIf)
@@ -67,7 +65,9 @@ class ExpressscanIf : public ScanningIf
     virtual std::pair<double, std::vector<uint8_t>> getbasedata(bool);
 };
 
-class Expresslegacyscan : public ExpressscanIf
+class Expresslegacyscan :
+    public ExpressscanIf,
+    public std::enable_shared_from_this<Expresslegacyscan>
 {
   public:
     explicit Expresslegacyscan(std::shared_ptr<serial> serialIf) :
@@ -86,7 +86,9 @@ class Expresslegacyscan : public ExpressscanIf
                                             double, uint8_t);
 };
 
-class Expressdensescan : public ExpressscanIf
+class Expressdensescan :
+    public ExpressscanIf,
+    public std::enable_shared_from_this<Expressdensescan>
 {
   public:
     explicit Expressdensescan(std::shared_ptr<serial> serialIf) :

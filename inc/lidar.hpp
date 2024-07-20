@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.hpp"
+#include "display.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -11,12 +12,13 @@ class LidarIf
     virtual ~LidarIf()
     {}
     virtual void observe(int32_t, const NotifyFunc&) = 0;
-    virtual void run() = 0;
+    virtual void menu() = 0;
 };
 
-class Aseries : public LidarIf, public Common
+class Aseries : public LidarIf, public virtual Common, public Display
 {
   public:
+    static constexpr auto scantype{"legacy"};
     static constexpr auto baud{"115200"};
     static constexpr speed_t speed{B115200};
     static constexpr seriesid series{seriesid::amodel};
@@ -26,12 +28,13 @@ class Aseries : public LidarIf, public Common
     ~Aseries()
     {}
     void observe(int32_t, const NotifyFunc&) override;
-    void run() override;
+    void menu() override;
 };
 
-class Cseries : public LidarIf, public Common
+class Cseries : public LidarIf, public virtual Common, public Display
 {
   public:
+    static constexpr auto scantype{"dense"};
     static constexpr auto baud{"460800"};
     static constexpr speed_t speed{B460800};
     static constexpr seriesid series{seriesid::cmodel};
@@ -42,7 +45,7 @@ class Cseries : public LidarIf, public Common
     {}
 
     void observe(int32_t, const NotifyFunc&) override;
-    void run() override;
+    void menu() override;
 };
 
 class LidarFactoryIf
@@ -56,6 +59,9 @@ class LidarFactoryIf
 
 template <typename T>
     requires requires(T t, std::shared_ptr<serial> serial, seriesid series) {
+        {
+            t.scantype
+        } -> std::same_as<const char* const&>;
         {
             t.baud
         } -> std::same_as<const char* const&>;
