@@ -60,44 +60,44 @@ Press enter to return to menu<br>
 Normal 360 scan started @ Sat Jul 20 02:40:37 2024<br>
 <br>
 [01] angle(dgr) 000, dist(cm): 0078.7<br>
-[02] angle(dgr) 031, dist(cm): 0090.3<br>
-[03] angle(dgr) 059, dist(cm): 0127.1<br>
-[04] angle(dgr) 091, dist(cm): 0030.8<br>
-[05] angle(dgr) 121, dist(cm): 0083.2<br>
-[06] angle(dgr) 150, dist(cm): 0433.2<br>
-[07] angle(dgr) 181, dist(cm): 0343.2<br>
-[08] angle(dgr) 210, dist(cm): 0174.8<br>
-[09] angle(dgr) 241, dist(cm): 0080.3<br>
+[02] angle(dgr) 031, dist(cm): 0095.2<br>
+[03] angle(dgr) 059, dist(cm): 0045.4<br>
+[04] angle(dgr) 091, dist(cm): 0032.5<br>
+[05] angle(dgr) 121, dist(cm): 0083.0<br>
+[06] angle(dgr) 149, dist(cm): 0433.9<br>
+[07] angle(dgr) 180, dist(cm): 0344.0<br>
+[08] angle(dgr) 210, dist(cm): 0175.3<br>
+[09] angle(dgr) 241, dist(cm): 0080.2<br>
 [10] angle(dgr) 270, dist(cm): 0033.4<br>
-[11] angle(dgr) 300, dist(cm): 0036.8<br>
-[12] angle(dgr) 331, dist(cm): 0087.9<br>
+[11] angle(dgr) 301, dist(cm): 0036.9<br>
+[12] angle(dgr) 331, dist(cm): 0087.8<br>
 <br>
-[181dgr@343cm] GOOD: OBSTACLE FAR AWAY<br>
+[180dgr@344cm] GOOD: OBSTACLE FAR AWAY<br>
 <br>
 [000dgr@078cm] GOOD: OBSTACLE FAR AWAY<br>
-[181dgr@343cm] GOOD: OBSTACLE FAR AWAY<br>
+[180dgr@344cm] GOOD: OBSTACLE FAR AWAY<br>
 <br>
 -----<br>
 **-> 6<br>**
 Express 360 "legacy" scan started @ Sat Jul 20 02:41:38 2024<br>
 <br>
-[01] angle(dgr) 001, dist(cm): 0078.7<br>
-[02] angle(dgr) 031, dist(cm): 0095.8<br>
-[03] angle(dgr) 059, dist(cm): 0127.4<br>
-[04] angle(dgr) 090, dist(cm): 0031.5<br>
-[05] angle(dgr) 121, dist(cm): 0083.0<br>
-[06] angle(dgr) 150, dist(cm): 0432.2<br>
-[07] angle(dgr) 181, dist(cm): 0343.2<br>
-[08] angle(dgr) 211, dist(cm): 0174.7<br>
-[09] angle(dgr) 240, dist(cm): 0081.3<br>
-[10] angle(dgr) 270, dist(cm): 0033.4<br>
-[11] angle(dgr) 301, dist(cm): 0037.0<br>
-[12] angle(dgr) 331, dist(cm): 0087.9<br>
+[01] angle(dgr) 001, dist(cm): 0078.6<br>
+[02] angle(dgr) 031, dist(cm): 0076.4<br>
+[03] angle(dgr) 061, dist(cm): 0046.3<br>
+[04] angle(dgr) 091, dist(cm): 0030.7<br>
+[05] angle(dgr) 121, dist(cm): 0074.5<br>
+[06] angle(dgr) 151, dist(cm): 0458.1<br>
+[07] angle(dgr) 181, dist(cm): 0384.4<br>
+[08] angle(dgr) 210, dist(cm): 0257.6<br>
+[09] angle(dgr) 241, dist(cm): 0086.5<br>
+[10] angle(dgr) 271, dist(cm): 0033.3<br>
+[11] angle(dgr) 299, dist(cm): 0035.4<br>
+[12] angle(dgr) 331, dist(cm): 0072.1<br>
 <br>
-[181dgr@343cm] GOOD: OBSTACLE FAR AWAY<br>
+[181dgr@384cm] GOOD: OBSTACLE FAR AWAY<br>
 <br>
 [001dgr@078cm] GOOD: OBSTACLE FAR AWAY<br>
-[181dgr@343cm] GOOD: OBSTACLE FAR AWAY<br>
+[181dgr@384cm] GOOD: OBSTACLE FAR AWAY<br>
 <br>
 -----<br>
 **-> 7<br>**
