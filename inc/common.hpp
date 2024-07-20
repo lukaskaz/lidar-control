@@ -26,25 +26,49 @@ enum class seriesid
     unknown = 255
 };
 
+enum class state
+{
+    good,
+    warn,
+    err
+};
+
+struct Configuration
+{
+    struct Mode
+    {
+        uint32_t id;
+        std::string name;
+        uint32_t uscostpersample;
+        uint32_t maxsamplerate;
+        uint32_t maxdistance;
+        uint32_t answercmdtype;
+    };
+    uint32_t modecnt;
+    uint32_t typical;
+    std::vector<Mode> modes;
+};
+
 class Common
 {
   public:
     virtual ~Common(){};
     explicit Common(std::shared_ptr<serial>, const std::string&,
-                    const std::string&);
+                    const std::string&, const std::string&, const std::string&);
 
     static std::pair<bool, std::string> detect(std::shared_ptr<serial>,
                                                seriesid);
 
   protected:
     static std::pair<seriesid, std::string>
-        readmodeltype(std::shared_ptr<serial>);
+        getmodeltype(std::shared_ptr<serial>);
 
     virtual void observe(int32_t, const NotifyFunc&);
-    virtual void readinfo();
-    virtual void readstatus();
-    virtual void readsamplerate();
-    virtual void readconfiguration();
+    virtual std::tuple<std::string, std::string, std::string, std::string>
+        getinfo();
+    virtual std::pair<state, std::string> getstate();
+    virtual std::pair<uint16_t, uint16_t> getsamplerate();
+    virtual Configuration getconfiguration();
 
     virtual void runnormalscan();
     virtual void stopnormalscan();
@@ -52,7 +76,6 @@ class Common
     virtual void runexpressscan();
     virtual void stopexpressscan();
 
-    virtual void exitprogram();
     void getpacket(std::vector<uint8_t>&&, std::vector<uint8_t>&, uint8_t,
                    bool);
 
@@ -60,6 +83,10 @@ class Common
     std::shared_ptr<serial> serialIf;
     std::string device;
     std::string modelname;
+    std::string baud;
+    std::string expressscantype;
     std::shared_ptr<ScanningIf> normalscan;
     std::shared_ptr<ScanningIf> expressscan;
 };
+
+void statustest(Observer&);

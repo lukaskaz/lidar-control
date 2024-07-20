@@ -90,7 +90,7 @@ int main(int argc, char* argv[])
                           << "cm] GOOD: OBSTACLE FAR AWAY\n";
             }
         });
-        lidar->run();
+        lidar->menu();
     }
     catch (const std::exception& ex)
     {
