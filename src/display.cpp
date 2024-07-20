@@ -101,12 +101,12 @@ void Display::configuration()
     });
 }
 
-void Display::normalscanning(std::shared_ptr<ScanningIf> scan)
+void Display::normalscanning()
 {
     system("clear");
     std::cout << "Normal 360 scan started @ " << gettimestr();
     std::cout << "\e[?25l\n"; // hide cursor
-    statustest(scan->observer);
+    statustest(normalscan->observer);
     runnormalscan();
     getchar();
     stopnormalscan();
@@ -115,16 +115,16 @@ void Display::normalscanning(std::shared_ptr<ScanningIf> scan)
     std::cout << "\e[?25h\n"; // show cursor
 }
 
-void Display::expressscanning(std::shared_ptr<ScanningIf> scan)
+void Display::expressscanning()
 {
     system("clear");
     std::cout << "Express 360 " << std::quoted(expressscantype)
               << " scan started @ " << gettimestr();
     std::cout << "\e[?25l\n"; // hide cursor
-    statustest(scan->observer);
-    runnormalscan();
+    statustest(expressscan->observer);
+    runexpressscan();
     getchar();
-    stopnormalscan();
+    stopexpressscan();
     system("clear");
     std::cout << "Express 360 scan completed";
     std::cout << "\e[?25h\n"; // show cursor
@@ -142,10 +142,9 @@ void Display::run()
           {"get status", std::bind(&Display::state, this)},
           {"get sampling time", std::bind(&Display::samplerate, this)},
           {"get configuration", std::bind(&Display::configuration, this)},
-          {"normal scanning",
-           std::bind(&Display::normalscanning, this, normalscan)},
+          {"normal scanning", std::bind(&Display::normalscanning, this)},
           {"express scanning [" + expressscantype + "]",
-           std::bind(&Display::expressscanning, this, expressscan)},
+           std::bind(&Display::expressscanning, this)},
           {"exit", [this]() { exitprogram(); }}})
         .run();
 }
