@@ -16,7 +16,7 @@ class Display : public virtual Common
     void state();
     void samplerate();
     void configuration();
-    void normalscanning(std::shared_ptr<ScanningIf>);
-    void expressscanning(std::shared_ptr<ScanningIf>);
+    void normalscanning();
+    void expressscanning();
     void exitprogram();
 };
