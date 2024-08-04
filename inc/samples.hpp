@@ -1,15 +1,12 @@
 #pragma once
 
-#include <cstdint>
-#include <functional>
+#include "interfaces/samples.hpp"
+
 #include <map>
 #include <memory>
-#include <utility>
 #include <vector>
 
-using SampleData = std::pair<int32_t, double>;
 using UpdateFunc = std::function<void(double)>;
-using NotifyFunc = std::function<void(const SampleData&)>;
 
 class Sample
 {

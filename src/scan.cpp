@@ -1,4 +1,4 @@
-#include "scanning.hpp"
+#include "scan.hpp"
 
 #include "helpers.hpp"
 
@@ -8,30 +8,59 @@
 #include <future>
 #include <stdexcept>
 
-#define MAXANGLEPERSCAN 360
+constexpr auto MAXANGLEPERSCAN = 360;
+constexpr auto SCANSTARTFLAG = 0xA5;
+constexpr auto SCANSTARTSCAN = 0x20;
+constexpr auto SCANSTOPSCAN = 0x25;
 
-#define SCANSTARTFLAG 0xA5
-#define SCANSTARTSCAN 0x20
-#define SCANSTOPSCAN 0x25
-
-ScanningIf::ScanningIf(std::shared_ptr<serial> serialIf) : serialIf{serialIf}
+Scan::Scan(std::shared_ptr<serial> serialIf, scan_t type, scansub_t subtype) :
+    type{type}, subtype{subtype}, serialIf{serialIf}
 {}
 
-void ScanningIf::stop()
+Scan::~Scan()
+{
+    stop();
+}
+
+void Scan::stop()
 {
     if (isrunning())
     {
         running = false;
         scanning->wait();
     }
-};
+}
 
-bool ScanningIf::isrunning() const
+void Scan::addangle(int32_t angle, const NotifyFunc& func)
+{
+    observer.event(angle, func);
+}
+
+void Scan::delangle([[maybe_unused]] int32_t angle)
+{}
+
+scan_t Scan::gettype() const
+{
+    return type;
+}
+
+std::string Scan::getsubtypename() const
+{
+    static const std::unordered_map<scansub_t, std::string> subtypetoname = {
+        {scansub_t::legacy, "legacy"}, {scansub_t::dense, "dense"}};
+    if (subtypetoname.contains(subtype))
+    {
+        return subtypetoname.at(subtype);
+    }
+    throw std::runtime_error("Cannot find scan subtype to name mappping");
+}
+
+bool Scan::isrunning() const
 {
     return running;
 }
 
-void ScanningIf::releasescan()
+void Scan::releasescan()
 {
     serialIf->write({SCANSTARTFLAG, SCANSTOPSCAN});
     std::vector<uint8_t> resp;
@@ -39,7 +68,7 @@ void ScanningIf::releasescan()
         ;
 }
 
-Measurement Normalscan::getdata(bool firstread = false)
+Measurement ScanNormal::getdata(bool firstread = false)
 {
     static constexpr uint32_t packetsize = 5, poorquality = 10;
     std::vector<uint8_t> raw;
@@ -84,7 +113,7 @@ Measurement Normalscan::getdata(bool firstread = false)
     }
 }
 
-void Normalscan::run()
+void ScanNormal::run()
 {
     if (!isrunning())
     {
@@ -106,23 +135,14 @@ void Normalscan::run()
     }
 }
 
-void Normalscan::stop()
-{
-    if (isrunning())
-    {
-        running = false;
-        scanning->wait();
-    }
-}
-
-void Normalscan::requestscan()
+void ScanNormal::requestscan()
 {
     serialIf->write({SCANSTARTFLAG, SCANSTARTSCAN});
     std::vector<uint8_t> resp;
     serialIf->read(resp, 7);
 }
 
-void ExpressscanIf::requestscan()
+void ScanExpress::requestscan()
 {
     serialIf->write(
         {SCANSTARTFLAG, 0x82, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22});
@@ -131,7 +151,7 @@ void ExpressscanIf::requestscan()
 }
 
 std::pair<double, std::vector<uint8_t>>
-    ExpressscanIf::getbasedata(bool firstread = false)
+    ScanExpress::getbasedata(bool firstread = false)
 {
     static constexpr uint32_t packetsize = 84;
     std::vector<uint8_t> raw;
@@ -184,7 +204,7 @@ std::pair<double, std::vector<uint8_t>>
 }
 
 std::array<Measurement, 2>
-    Expresslegacyscan::getcabindata(std::vector<uint8_t>&& cabin,
+    ScanExpressLegacy::getcabindata(std::vector<uint8_t>&& cabin,
                                     double startangle, double angledelta,
                                     uint8_t cabinnum)
 {
@@ -227,7 +247,7 @@ std::array<Measurement, 2>
              {issecondvalid, {anglesecond, distancesecond / 10.}}}};
 }
 
-void Expresslegacyscan::run()
+void ScanExpressLegacy::run()
 {
     if (!isrunning())
     {
@@ -274,16 +294,7 @@ void Expresslegacyscan::run()
     }
 }
 
-void Expresslegacyscan::stop()
-{
-    if (isrunning())
-    {
-        running = false;
-        scanning->wait();
-    }
-}
-
-Measurement Expressdensescan::getcabindata(std::vector<uint8_t>&& cabin,
+Measurement ScanExpressDense::getcabindata(std::vector<uint8_t>&& cabin,
                                            double startangle, double angledelta,
                                            uint8_t cabinnum)
 {
@@ -305,7 +316,7 @@ Measurement Expressdensescan::getcabindata(std::vector<uint8_t>&& cabin,
     return {isvalid, {angle, distance / 10.}};
 }
 
-void Expressdensescan::run()
+void ScanExpressDense::run()
 {
     if (!isrunning())
     {
@@ -348,14 +359,5 @@ void Expressdensescan::run()
                 }
                 self->releasescan();
             }));
-    }
-}
-
-void Expressdensescan::stop()
-{
-    if (isrunning())
-    {
-        running = false;
-        scanning->wait();
     }
 }

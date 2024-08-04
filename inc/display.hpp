@@ -1,22 +1,26 @@
 #pragma once
 
 #include "climenu.hpp"
-#include "common.hpp"
+#include "interfaces/lidar.hpp"
 
-class Display : public virtual Common
+class Display
 {
   public:
-    Display(std::shared_ptr<serial> serialIf) : Common(serialIf, {}, {}, {}, {})
+    Display(LidarIf& lidar, std::vector<std::shared_ptr<ScanIf>>& scans) :
+        lidar{lidar}, scans{scans}
     {}
 
-    void run();
+    void run(std::tuple<std::string, std::string, std::string, std::string>&&);
 
   private:
+    LidarIf& lidar;
+    std::vector<std::shared_ptr<ScanIf>>& scans;
+
     void info();
     void state();
     void samplerate();
     void configuration();
     void normalscanning();
-    void expressscanning();
+    void expressscanning(const std::string& type);
     void exitprogram();
 };
