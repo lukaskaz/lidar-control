@@ -20,17 +20,18 @@ void show(const SampleData& data, uint32_t pos)
               << std::setprecision(1) << std::fixed << distance << "\e[0m\n";
 }
 
-void statustest(Observer& obs)
+void statustest(LidarIf& lidar)
 {
     int32_t line{0}, lines{12};
     for (auto angle{0}, last{359}; angle <= last; angle += 360 / lines)
     {
-        obs.event(angle, [line](const SampleData& data) { show(data, line); });
+        lidar.watchangle(angle,
+                         [line](const SampleData& data) { show(data, line); });
         line++;
     }
 
     static constexpr uint32_t initpos{5};
-    obs.event(180, [line{initpos + line + 1}](const SampleData& data) {
+    lidar.watchangle(180, [line{initpos + line + 1}](const SampleData& data) {
         const auto& [angle, distance] = data;
         auto dist{static_cast<uint32_t>(distance)};
         std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
@@ -57,7 +58,7 @@ void statustest(Observer& obs)
 
 void Display::info()
 {
-    auto [model, firmware, hardware, serialnum] = getinfo();
+    auto [model, firmware, hardware, serialnum] = lidar.getinfo();
     std::cout << "Model: " << model << "\n";
     std::cout << "Firmware: " << firmware << "\n";
     std::cout << "Hardware: " << hardware << "\n";
@@ -66,21 +67,21 @@ void Display::info()
 
 void Display::state()
 {
-    auto [code, name] = getstate();
+    auto [code, name] = lidar.getstate();
     std::cout << "Current status: " << std::quoted(name) << " ["
               << (uint32_t)code << "]\n";
 }
 
 void Display::samplerate()
 {
-    auto [normalms, expressms] = getsamplerate();
+    auto [normalms, expressms] = lidar.getsamplerate();
     std::cout << "Normal scan: " << normalms << "ms\n";
     std::cout << "Express scan: " << expressms << "ms\n";
 }
 
 void Display::configuration()
 {
-    auto config = getconfiguration();
+    auto config = lidar.getconfiguration();
 
     std::cout << "Scan modes count: " << config.modecnt << "\n";
     std::cout << "Typical scan mode: " << config.typical << "\n";
@@ -92,8 +93,8 @@ void Display::configuration()
             std::cout << " -> TYPICAL";
         }
         std::cout << "\n";
-        std::cout << "\t> cost per sample: " << mode.uscostpersample << " us\n";
-        std::cout << "\t> max sample rate: " << mode.maxsamplerate << " sps\n";
+        std::cout << "\t> cost per sample: " << mode.uscostpersample << "us\n ";
+        std::cout << "\t> max sample rate :" << mode.maxsamplerate << " sps\n";
         std::cout << "\t> max distance: " << mode.maxdistance << "m\n";
         std::cout << "\t> answer cmd type: " << std::hex << std::showbase
                   << mode.answercmdtype << std::noshowbase << std::dec << "\n";
@@ -106,25 +107,25 @@ void Display::normalscanning()
     system("clear");
     std::cout << "Normal 360 scan started @ " << gettimestr();
     std::cout << "\e[?25l\n"; // hide cursor
-    statustest(normalscan->observer);
-    runnormalscan();
+    statustest(lidar);
+    lidar.runscan(scan_t::normal);
     getchar();
-    stopnormalscan();
+    lidar.stopscan();
     system("clear");
     std::cout << "Normal 360 scan completed";
     std::cout << "\e[?25h\n"; // show cursor
 }
 
-void Display::expressscanning()
+void Display::expressscanning(const std::string& type)
 {
     system("clear");
-    std::cout << "Express 360 " << std::quoted(expressscantype)
-              << " scan started @ " << gettimestr();
+    std::cout << "Express 360 " << std::quoted(type) << " scan started @ "
+              << gettimestr();
     std::cout << "\e[?25l\n"; // hide cursor
-    statustest(expressscan->observer);
-    runexpressscan();
+    statustest(lidar);
+    lidar.runscan(scan_t::express);
     getchar();
-    stopexpressscan();
+    lidar.stopscan();
     system("clear");
     std::cout << "Express 360 scan completed";
     std::cout << "\e[?25h\n"; // show cursor
@@ -135,16 +136,38 @@ void Display::exitprogram()
     std::cout << "Cleaning and closing\n";
 }
 
-void Display::run()
+void Display::run(
+    std::tuple<std::string, std::string, std::string, std::string>&& info)
 {
-    Menu("[Lidar " + modelname + " scanner on " + device + " @ " + baud + "]",
-         {{"get info", std::bind(&Display::info, this)},
-          {"get status", std::bind(&Display::state, this)},
-          {"get sampling time", std::bind(&Display::samplerate, this)},
-          {"get configuration", std::bind(&Display::configuration, this)},
-          {"normal scanning", std::bind(&Display::normalscanning, this)},
-          {"express scanning [" + expressscantype + "]",
-           std::bind(&Display::expressscanning, this)},
-          {"exit", [this]() { exitprogram(); }}})
-        .run();
+    const auto& [model, device, baud, scantype] = info;
+    auto title =
+        "[Lidar " + model + " scanner on " + device + " @ " + baud + "]";
+    std::vector<std::pair<std::string, func>> entries;
+
+    entries.emplace_back("get info", std::bind(&Display::info, this));
+    entries.emplace_back("get status", std::bind(&Display::state, this));
+    entries.emplace_back("get sampling time",
+                         std::bind(&Display::samplerate, this));
+    entries.emplace_back("get configuration",
+                         std::bind(&Display::configuration, this));
+    if (auto scannormal = std::ranges::find_if(
+            scans, [](auto scan) { return scan->gettype() == scan_t::normal; });
+        scannormal != scans.end())
+    {
+        entries.emplace_back("normal scanning",
+                             std::bind(&Display::normalscanning, this));
+    }
+    if (auto scanexpress = std::ranges::find_if(
+            scans,
+            [](auto scan) { return scan->gettype() == scan_t::express; });
+        scanexpress != scans.end())
+    {
+        auto scanname = (*scanexpress)->getsubtypename();
+        entries.emplace_back(
+            "express scanning [" + scanname + "]",
+            std::bind(&Display::expressscanning, this, scanname));
+    }
+    entries.emplace_back("exit", [this]() { exitprogram(); });
+
+    Menu(title, std::move(entries)).run();
 }

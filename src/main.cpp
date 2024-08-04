@@ -1,4 +1,4 @@
-#include "lidar.hpp"
+#include "lidarfactory.hpp"
 
 #include <boost/program_options.hpp>
 
@@ -43,8 +43,8 @@ int main(int argc, char* argv[])
 
     try
     {
-        auto lidar = Lidar::detect(device);
-        lidar->observe(0, [](const SampleData& data) {
+        auto lidar = LidarFinder::run(device);
+        lidar->watchangle(0, [](const SampleData& data) {
             const auto& [angle, distance] = data;
             uint32_t line{20}, dist{static_cast<uint32_t>(distance)};
             std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
@@ -67,7 +67,7 @@ int main(int argc, char* argv[])
                           << "cm] GOOD: OBSTACLE FAR AWAY\n";
             }
         });
-        lidar->observe(180, [](const SampleData& data) {
+        lidar->watchangle(180, [](const SampleData& data) {
             const auto& [angle, distance] = data;
             uint32_t line{21}, dist{static_cast<uint32_t>(distance)};
             std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;

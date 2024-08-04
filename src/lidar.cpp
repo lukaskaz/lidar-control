@@ -1,27 +1,40 @@
-#include "common.hpp"
+#include "lidar.hpp"
 
+#include "display.hpp"
 #include "helpers.hpp"
 
 #include <algorithm>
 #include <sstream>
 #include <unordered_map>
 
-Common::Common(std::shared_ptr<serial> serialIf, const std::string& device,
-               const std::string& name, const std::string& baud,
-               const std::string& scantype) :
-    serialIf{serialIf},
-    device{device}, modelname{name}, baud{baud}, expressscantype{scantype}
-{}
+constexpr auto SCANSTARTFLAG = 0xA5;
+constexpr auto SCANGETINFOCMD = 0x50;
+constexpr auto SCANGETSTATCMD = 0x52;
+constexpr auto SCANGETSRATECMD = 0x59;
+constexpr auto SCANGETCONFCMD = 0x84;
 
-std::pair<bool, std::string> Common::detect(std::shared_ptr<serial> serialIf,
-                                            seriesid series)
+void Lidar::menu()
 {
+    Display(*this, scans)
+        .run({model, serialIf->getdevice(), serialIf->getbaud(), ""});
+}
+
+bool Lidar::setup(const std::string& device)
+{
+    auto serialIf = std::make_shared<usb>(device, baud);
     auto [modelseries, modelname] = getmodeltype(serialIf);
-    return {modelseries == series, modelname};
+    bool match{modelseries == series};
+    if (match)
+    {
+        this->serialIf = serialIf;
+        model = modelname;
+        scans = initscans(serialIf);
+    }
+    return match;
 }
 
 std::pair<seriesid, std::string>
-    Common::getmodeltype(std::shared_ptr<serial> serialIf)
+    Lidar::getmodeltype(std::shared_ptr<serial> serialIf)
 {
     seriesid series{seriesid::unknown};
     std::string name;
@@ -66,13 +79,24 @@ std::pair<seriesid, std::string>
     return {series, name};
 }
 
-void Common::observe(int32_t angle, const NotifyFunc& notifier)
+void Lidar::watchangle(int32_t angle, const NotifyFunc& notifier)
 {
-    normalscan->observer.event(angle, notifier);
-    expressscan->observer.event(angle, notifier);
+    if (auto scannormal = std::ranges::find_if(
+            scans, [](auto scan) { return scan->gettype() == scan_t::normal; });
+        scannormal != scans.end())
+    {
+        (*scannormal)->addangle(angle, notifier);
+    }
+    if (auto scanexpress = std::ranges::find_if(
+            scans,
+            [](auto scan) { return scan->gettype() == scan_t::express; });
+        scanexpress != scans.end())
+    {
+        (*scanexpress)->addangle(angle, notifier);
+    }
 }
 
-std::tuple<std::string, std::string, std::string, std::string> Common::getinfo()
+std::tuple<std::string, std::string, std::string, std::string> Lidar::getinfo()
 {
     serialIf->write({SCANSTARTFLAG, SCANGETINFOCMD});
     std::vector<uint8_t> resp;
@@ -96,7 +120,7 @@ std::tuple<std::string, std::string, std::string, std::string> Common::getinfo()
     return {model, firmware, hardware, serialnum};
 }
 
-std::pair<state, std::string> Common::getstate()
+std::pair<state, std::string> Lidar::getstate()
 {
     static const std::unordered_map<state, std::string> status = {
         {state::good, "\e[1;32mOk\e[0m"},
@@ -112,7 +136,7 @@ std::pair<state, std::string> Common::getstate()
     return {code, name};
 }
 
-std::pair<uint16_t, uint16_t> Common::getsamplerate()
+std::pair<uint16_t, uint16_t> Lidar::getsamplerate()
 {
     static constexpr auto makeval = [](uint8_t hi, uint8_t low) -> uint16_t {
         return hi << 8 | low;
@@ -125,7 +149,7 @@ std::pair<uint16_t, uint16_t> Common::getsamplerate()
     return {normalscantime, expressscantime};
 }
 
-Configuration Common::getconfiguration()
+Configuration Lidar::getconfiguration()
 {
     static constexpr uint8_t reqdatasize = 4, respdatasize = reqdatasize,
                              resppacketsize = respdatasize + 7;
@@ -179,34 +203,32 @@ Configuration Common::getconfiguration()
     return config;
 }
 
-void Common::runnormalscan()
+void Lidar::runscan(scan_t type)
 {
-    if (!expressscan->isrunning())
-    {
-        normalscan->run();
-    }
+    std::ranges::for_each(scans, [type](auto scan) {
+        if (scan->gettype() == type)
+        {
+            scan->run();
+        }
+    });
 }
 
-void Common::stopnormalscan()
+void Lidar::stopscan()
 {
-    normalscan->stop();
+    std::ranges::for_each(scans, [](auto scan) {
+        if (scan->isrunning())
+        {
+            scan->stop();
+        }
+    });
 }
 
-void Common::runexpressscan()
-{
-    if (!normalscan->isrunning())
-    {
-        expressscan->run();
-    }
-}
+Lidar::Lidar(seriesid series, speed_t baud, scansinitfunc&& initscans) :
+    series{series}, baud{baud}, initscans{std::move(initscans)}
+{}
 
-void Common::stopexpressscan()
-{
-    expressscan->stop();
-}
-
-void Common::getpacket(std::vector<uint8_t>&& req, std::vector<uint8_t>& resp,
-                       uint8_t size, bool chsum = false)
+void Lidar::getpacket(std::vector<uint8_t>&& req, std::vector<uint8_t>& resp,
+                      uint8_t size, bool chsum = false)
 {
     if (chsum)
     {

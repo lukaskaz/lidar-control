@@ -1,124 +1,39 @@
 #pragma once
 
-#include "common.hpp"
-#include "display.hpp"
+#include "interfaces/lidar.hpp"
 
-#include <algorithm>
-#include <stdexcept>
-
-class LidarIf
+class Lidar : public LidarIf
 {
   public:
-    virtual ~LidarIf()
-    {}
-    virtual void observe(int32_t, const NotifyFunc&) = 0;
-    virtual void menu() = 0;
-};
-
-class Aseries : public LidarIf, public virtual Common, public Display
-{
-  public:
-    static constexpr auto scantype{"legacy"};
-    static constexpr auto baud{"115200"};
-    static constexpr speed_t speed{B115200};
-    static constexpr seriesid series{seriesid::amodel};
-
-  public:
-    Aseries(std::shared_ptr<serial>, const std::string&, const std::string&);
-    ~Aseries()
-    {}
-    void observe(int32_t, const NotifyFunc&) override;
     void menu() override;
-};
+    bool setup(const std::string&) override;
 
-class Cseries : public LidarIf, public virtual Common, public Display
-{
-  public:
-    static constexpr auto scantype{"dense"};
-    static constexpr auto baud{"460800"};
-    static constexpr speed_t speed{B460800};
-    static constexpr seriesid series{seriesid::cmodel};
+    std::pair<seriesid, std::string>
+        getmodeltype(std::shared_ptr<serial>) override;
+    std::tuple<std::string, std::string, std::string, std::string>
+        getinfo() override;
+    std::pair<state, std::string> getstate() override;
+    std::pair<uint16_t, uint16_t> getsamplerate() override;
+    Configuration getconfiguration() override;
 
-  public:
-    Cseries(std::shared_ptr<serial>, const std::string&, const std::string&);
-    ~Cseries()
-    {}
+    void watchangle(int32_t, const NotifyFunc&) override;
+    void runscan(scan_t) override;
+    void stopscan() override;
 
-    void observe(int32_t, const NotifyFunc&) override;
-    void menu() override;
-};
-
-class LidarFactoryIf
-{
-  public:
-    virtual ~LidarFactoryIf()
-    {}
-    virtual bool detect() = 0;
-    virtual std::shared_ptr<LidarIf> create() = 0;
-};
-
-template <typename T>
-    requires requires(T t, std::shared_ptr<serial> serial, seriesid series) {
-        {
-            t.scantype
-        } -> std::same_as<const char* const&>;
-        {
-            t.baud
-        } -> std::same_as<const char* const&>;
-        {
-            t.speed
-        } -> std::same_as<const speed_t&>;
-        {
-            t.series
-        } -> std::same_as<const seriesid&>;
-        {
-            t.detect(serial, series)
-        } -> std::same_as<std::pair<bool, std::string>>;
-    }
-class LidarFactory : public LidarFactoryIf
-{
-  public:
-    explicit LidarFactory(const std::string& device) : device{device}
-    {}
-    LidarFactory(const LidarFactory&) = delete;
-    LidarFactory(LidarFactory&&) = delete;
-    LidarFactory& operator=(const LidarFactory&) = delete;
-    LidarFactory& operator=(LidarFactory&&) = delete;
-
-    bool detect() override
-    {
-        bool detected{};
-        auto serialIf = std::make_shared<usb>(device, T::speed);
-        std::tie(detected, modulename) = T::detect(serialIf, T::series);
-        return detected;
-    }
-
-    std::shared_ptr<LidarIf> create() override
-    {
-        auto serialIf = std::make_shared<usb>(device, T::speed);
-        return std::make_shared<T>(serialIf, device, modulename);
-    }
+  protected:
+    using scansinittype = std::vector<std::shared_ptr<ScanIf>>;
+    using scansinitfunc = std::function<scansinittype(std::shared_ptr<serial>)>;
+    const seriesid series;
+    speed_t baud;
+    const scansinitfunc initscans;
+    std::string model;
+    std::shared_ptr<serial> serialIf;
+    std::vector<std::shared_ptr<ScanIf>> scans;
 
   private:
-    const std::string device;
-    std::string modulename;
-};
+    friend class LidarFactory;
+    Lidar(seriesid, speed_t, scansinitfunc&&);
 
-class Lidar
-{
-  public:
-    static std::shared_ptr<LidarIf> detect(const std::string& device)
-    {
-        static const std::vector<std::shared_ptr<LidarFactoryIf>> factories = {
-            std::make_shared<LidarFactory<Aseries>>(device),
-            std::make_shared<LidarFactory<Cseries>>(device)};
-
-        if (auto detected = std::ranges::find_if(
-                factories, [](auto factory) { return factory->detect(); });
-            detected != factories.end())
-        {
-            return (*detected)->create();
-        }
-        throw std::runtime_error("Cannot detect lidar");
-    }
+    void getpacket(std::vector<uint8_t>&&, std::vector<uint8_t>&, uint8_t,
+                   bool);
 };
