@@ -100,19 +100,8 @@ std::string Lidar::getname()
 
 void Lidar::watchangle(int32_t angle, const NotifyFunc& notifier)
 {
-    if (auto scannormal = std::ranges::find_if(
-            scans, [](auto scan) { return scan->gettype() == scan_t::normal; });
-        scannormal != scans.end())
-    {
-        (*scannormal)->addangle(angle, notifier);
-    }
-    if (auto scanexpress = std::ranges::find_if(
-            scans,
-            [](auto scan) { return scan->gettype() == scan_t::express; });
-        scanexpress != scans.end())
-    {
-        (*scanexpress)->addangle(angle, notifier);
-    }
+    getscan(scan_t::normal)->addangle(angle, notifier);
+    getscan(scan_t::express)->addangle(angle, notifier);
 }
 
 std::tuple<std::string, std::string, std::string, std::string>
