@@ -23,6 +23,8 @@ class Scan : public ScanIf
     void delangle(int32_t) override;
 
     scan_t gettype() const override;
+    scansub_t getsubtype() const override;
+    std::string gettypename() const override;
     std::string getsubtypename() const override;
 
     bool isrunning() const override;

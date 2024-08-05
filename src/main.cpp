@@ -1,3 +1,4 @@
+#include "display.hpp"
 #include "lidarfactory.hpp"
 
 #include <boost/program_options.hpp>
@@ -90,7 +91,8 @@ int main(int argc, char* argv[])
                           << "cm] GOOD: OBSTACLE FAR AWAY\n";
             }
         });
-        lidar->menu();
+
+        Display(lidar).run();
     }
     catch (const std::exception& ex)
     {
