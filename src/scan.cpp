@@ -44,10 +44,28 @@ scan_t Scan::gettype() const
     return type;
 }
 
+scansub_t Scan::getsubtype() const
+{
+    return subtype;
+}
+
+std::string Scan::gettypename() const
+{
+    static const std::unordered_map<scan_t, std::string> typetoname = {
+        {scan_t::normal, "normal"}, {scan_t::express, "express"}};
+    if (typetoname.contains(type))
+    {
+        return typetoname.at(type);
+    }
+    throw std::runtime_error("Cannot find scan type to name mappping");
+}
+
 std::string Scan::getsubtypename() const
 {
     static const std::unordered_map<scansub_t, std::string> subtypetoname = {
-        {scansub_t::legacy, "legacy"}, {scansub_t::dense, "dense"}};
+        {scansub_t::none, ""},
+        {scansub_t::legacy, "legacy"},
+        {scansub_t::dense, "dense"}};
     if (subtypetoname.contains(subtype))
     {
         return subtypetoname.at(subtype);
@@ -89,8 +107,7 @@ Measurement ScanNormal::getdata(bool firstread = false)
                 if (recvsize != packetsize)
                 {
                     throw std::runtime_error(
-                        std::string(__func__) +
-                        ": received packet size is incorrect");
+                        "Received packet size is incorrect");
                 }
 
                 [[maybe_unused]] bool newscan = raw[0] & 0x01;
@@ -171,9 +188,7 @@ std::pair<double, std::vector<uint8_t>>
                 bool startflag = raw[3] & 0x80 ? true : false;
                 if (firstread && !startflag)
                 {
-                    throw std::runtime_error(std::string(__func__) +
-                                             ": first packet has no start "
-                                             "flag, probably hw malfunction");
+                    throw std::runtime_error("First packet without start flag");
                 }
 
                 size_t remainingsize = packetsize - recvsize;
@@ -181,8 +196,7 @@ std::pair<double, std::vector<uint8_t>>
                 if (recvsize != packetsize)
                 {
                     throw std::runtime_error(
-                        std::string(__func__) +
-                        ": received packet size is incorrect");
+                        "Received packet size is incorrect");
                 }
 
                 uint8_t chsumrecv =

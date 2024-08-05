@@ -28,6 +28,8 @@ class ScanIf
     virtual void addangle(int32_t, const NotifyFunc&) = 0;
     virtual void delangle(int32_t) = 0;
     virtual scan_t gettype() const = 0;
+    virtual scansub_t getsubtype() const = 0;
+    virtual std::string gettypename() const = 0;
     virtual std::string getsubtypename() const = 0;
     virtual bool isrunning() const = 0;
 };

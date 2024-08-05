@@ -6,21 +6,18 @@
 class Display
 {
   public:
-    Display(LidarIf& lidar, std::vector<std::shared_ptr<ScanIf>>& scans) :
-        lidar{lidar}, scans{scans}
+    Display(std::shared_ptr<LidarIf> lidar) : lidar{lidar}
     {}
 
-    void run(std::tuple<std::string, std::string, std::string, std::string>&&);
+    void run();
 
   private:
-    LidarIf& lidar;
-    std::vector<std::shared_ptr<ScanIf>>& scans;
+    std::shared_ptr<LidarIf> lidar;
 
     void info();
     void state();
     void samplerate();
     void configuration();
-    void normalscanning();
-    void expressscanning(const std::string& type);
+    void scanning(scan_t);
     void exitprogram();
 };

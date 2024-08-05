@@ -1,10 +1,10 @@
 #include "lidar.hpp"
 
-#include "display.hpp"
 #include "helpers.hpp"
 
 #include <algorithm>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 
 constexpr auto SCANSTARTFLAG = 0xA5;
@@ -13,30 +13,54 @@ constexpr auto SCANGETSTATCMD = 0x52;
 constexpr auto SCANGETSRATECMD = 0x59;
 constexpr auto SCANGETCONFCMD = 0x84;
 
-void Lidar::menu()
-{
-    Display(*this, scans)
-        .run({model, serialIf->getdevice(), serialIf->getbaud(), ""});
-}
-
 bool Lidar::setup(const std::string& device)
 {
-    auto serialIf = std::make_shared<usb>(device, baud);
-    auto [modelseries, modelname] = getmodeltype(serialIf);
-    bool match{modelseries == series};
-    if (match)
+    auto tmpSerialIf = std::make_shared<usb>(device, baud);
+    if (series == getseries(tmpSerialIf))
     {
-        this->serialIf = serialIf;
-        model = modelname;
+        serialIf = tmpSerialIf;
         scans = initscans(serialIf);
+        return true;
     }
-    return match;
+    return false;
 }
 
-std::pair<seriesid, std::string>
-    Lidar::getmodeltype(std::shared_ptr<serial> serialIf)
+seriesid Lidar::getseries(std::shared_ptr<serial> serialIf)
 {
     seriesid series{seriesid::unknown};
+    serialIf->write({SCANSTARTFLAG, SCANGETINFOCMD});
+    std::vector<uint8_t> resp;
+    if (serialIf->read(resp, 27))
+    {
+        uint8_t modelid = resp[7];
+        uint8_t majormodelid = (modelid >> 4) & 0x0F;
+
+        if (majormodelid >= (uint8_t)seriesid::mmodel)
+        {
+            series = seriesid::mmodel;
+        }
+        else if (majormodelid >= (uint8_t)seriesid::tmodel)
+        {
+            series = seriesid::tmodel;
+        }
+        else if (majormodelid >= (uint8_t)seriesid::smodel)
+        {
+            series = seriesid::smodel;
+        }
+        else if (majormodelid >= (uint8_t)seriesid::cmodel)
+        {
+            series = seriesid::cmodel;
+        }
+        else
+        {
+            series = seriesid::amodel;
+        }
+    }
+    return series;
+}
+
+std::string Lidar::getname()
+{
     std::string name;
     serialIf->write({SCANSTARTFLAG, SCANGETINFOCMD});
     std::vector<uint8_t> resp;
@@ -52,31 +76,26 @@ std::pair<seriesid, std::string>
 
         if (majormodelid >= (uint8_t)seriesid::mmodel)
         {
-            series = seriesid::mmodel;
             name = getname('M', (uint8_t)seriesid::mmodel - 1);
         }
         else if (majormodelid >= (uint8_t)seriesid::tmodel)
         {
-            series = seriesid::tmodel;
             name = getname('T', (uint8_t)seriesid::tmodel - 1);
         }
         else if (majormodelid >= (uint8_t)seriesid::smodel)
         {
-            series = seriesid::smodel;
             name = getname('S', (uint8_t)seriesid::smodel - 1);
         }
         else if (majormodelid >= (uint8_t)seriesid::cmodel)
         {
-            series = seriesid::cmodel;
             name = getname('C', (uint8_t)seriesid::cmodel - 1);
         }
         else
         {
-            series = seriesid::amodel;
             name = getname('A', 0);
         }
     }
-    return {series, name};
+    return name;
 }
 
 void Lidar::watchangle(int32_t angle, const NotifyFunc& notifier)
@@ -96,7 +115,8 @@ void Lidar::watchangle(int32_t angle, const NotifyFunc& notifier)
     }
 }
 
-std::tuple<std::string, std::string, std::string, std::string> Lidar::getinfo()
+std::tuple<std::string, std::string, std::string, std::string>
+    Lidar::getfwinfo()
 {
     serialIf->write({SCANSTARTFLAG, SCANGETINFOCMD});
     std::vector<uint8_t> resp;
@@ -203,14 +223,14 @@ Configuration Lidar::getconfiguration()
     return config;
 }
 
+std::pair<std::string, std::string> Lidar::getconninfo()
+{
+    return {serialIf->getdevice(), serialIf->getbaud()};
+}
+
 void Lidar::runscan(scan_t type)
 {
-    std::ranges::for_each(scans, [type](auto scan) {
-        if (scan->gettype() == type)
-        {
-            scan->run();
-        }
-    });
+    getscan(type)->run();
 }
 
 void Lidar::stopscan()
@@ -221,6 +241,12 @@ void Lidar::stopscan()
             scan->stop();
         }
     });
+}
+
+std::pair<std::string, std::string> Lidar::getscaninfo(scan_t type) const
+{
+    const auto scan = getscan(type);
+    return {scan->gettypename(), scan->getsubtypename()};
 }
 
 Lidar::Lidar(seriesid series, speed_t baud, scansinitfunc&& initscans) :
@@ -236,4 +262,15 @@ void Lidar::getpacket(std::vector<uint8_t>&& req, std::vector<uint8_t>& resp,
     }
     serialIf->write(req);
     serialIf->read(resp, size);
+}
+
+std::shared_ptr<ScanIf> Lidar::getscan(scan_t type) const
+{
+    if (auto scan = std::ranges::find_if(
+            scans, [type](auto scan) { return scan->gettype() == type; });
+        scan != scans.end())
+    {
+        return *scan;
+    }
+    throw std::runtime_error("No scan for given type");
 }

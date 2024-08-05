@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <stdexcept>
 
 #define MAXANGLEPERSCAN 360
 
