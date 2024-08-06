@@ -12,11 +12,3 @@ std::string gettimestr()
                   timestr.end());
     return timestr;
 }
-
-uint8_t getchecksum(const std::vector<uint8_t>& data)
-{
-    uint8_t chsum{};
-    std::ranges::for_each(data,
-                          [&chsum](const uint8_t byte) { chsum ^= byte; });
-    return chsum;
-}

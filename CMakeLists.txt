@@ -18,11 +18,11 @@ include_directories(inc)
 file(GLOB SOURCES "src/*.cpp")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
-add_dependencies(${PROJECT_NAME} libserial)
+add_dependencies(${PROJECT_NAME} liblidar)
 add_dependencies(${PROJECT_NAME} libclimenu)
 
 target_link_libraries(${PROJECT_NAME}
-    serial
+    lidar
     climenu
     ${Boost_LIBRARIES}
 )
