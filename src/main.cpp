@@ -1,5 +1,6 @@
 #include "display.hpp"
 #include "lidarfactory.hpp"
+#include "serial.hpp"
 
 #include <boost/program_options.hpp>
 
@@ -44,7 +45,8 @@ int main(int argc, char* argv[])
 
     try
     {
-        auto lidar = LidarFinder::run(device);
+        auto serial = std::make_shared<usb>(device);
+        auto lidar = LidarFinder::run(serial);
         lidar->watchangle(0, [](const SampleData& data) {
             const auto& [angle, distance] = data;
             uint32_t line{20}, dist{static_cast<uint32_t>(distance)};
