@@ -25,35 +25,38 @@ void statustest(std::shared_ptr<LidarIf> lidar)
     int32_t line{0}, lines{12};
     for (auto angle{0}, last{359}; angle <= last; angle += 360 / lines)
     {
-        lidar->watchangle(angle,
-                          [line](const SampleData& data) { show(data, line); });
+        lidar->watchangle(
+            angle, Observer<SampleData>::create(
+                       [line](const SampleData& data) { show(data, line); }));
         line++;
     }
 
     static constexpr uint32_t initpos{5};
-    lidar->watchangle(180, [line{initpos + line + 1}](const SampleData& data) {
-        const auto& [angle, distance] = data;
-        auto dist{static_cast<uint32_t>(distance)};
-        std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
-        if (distance < 30)
-        {
-            std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                      << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                      << "cm] CRITICAL: OBSTACLE TOO CLOSE\n";
-        }
-        else if (distance < 60)
-        {
-            std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                      << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                      << "cm] WARNING: OBSTACLE NEARBY\n";
-        }
-        else
-        {
-            std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                      << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                      << "cm] GOOD: OBSTACLE FAR AWAY\n";
-        }
-    });
+    lidar->watchangle(
+        180, Observer<SampleData>::create([line{initpos + line + 1}](
+                                              const SampleData& data) {
+            const auto& [angle, distance] = data;
+            auto dist{static_cast<uint32_t>(distance)};
+            std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
+            if (distance < 30)
+            {
+                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
+                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
+                          << "cm] CRITICAL: OBSTACLE TOO CLOSE\n";
+            }
+            else if (distance < 60)
+            {
+                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
+                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
+                          << "cm] WARNING: OBSTACLE NEARBY\n";
+            }
+            else
+            {
+                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
+                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
+                          << "cm] GOOD: OBSTACLE FAR AWAY\n";
+            }
+        }));
 }
 
 void Display::info()
