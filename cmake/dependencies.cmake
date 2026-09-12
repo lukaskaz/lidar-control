@@ -49,15 +49,15 @@ EXTERNALPROJECT_ADD(
 include_directories(${source_dir}/inc)
 link_directories(${build_dir}/build)
 
-set(source_dir "${CMAKE_BINARY_DIR}/libclimenu-src")
-set(build_dir "${CMAKE_BINARY_DIR}/libclimenu-build")
+set(source_dir "${CMAKE_BINARY_DIR}/libmenu-src")
+set(build_dir "${CMAKE_BINARY_DIR}/libmenu-build")
 
 EXTERNALPROJECT_ADD(
-  libclimenu
-  GIT_REPOSITORY    https://github.com/lukaskaz/lib-climenu.git
+  libmenu
+  GIT_REPOSITORY    https://github.com/lukaskaz/lib-menu.git
   GIT_TAG           main
   PATCH_COMMAND     ""
-  PREFIX            libclimenu-workspace
+  PREFIX            libmenu-workspace
   SOURCE_DIR        ${source_dir}
   BINARY_DIR        ${build_dir}
   CONFIGURE_COMMAND mkdir /${build_dir}/build &> /dev/null
@@ -70,3 +70,18 @@ EXTERNALPROJECT_ADD(
 
 include_directories(${source_dir}/inc)
 link_directories(${build_dir}/build)
+
+if(NOT (EXISTS ${CMAKE_BINARY_DIR}/liblogger-src
+    OR EXISTS ${CMAKE_BINARY_DIR}/liblogger-build))
+    execute_process(
+        COMMAND ln -s ${build_dir}/build/liblogger-src ${CMAKE_BINARY_DIR}
+        COMMAND ln -s ${build_dir}/build/liblogger-build ${CMAKE_BINARY_DIR}
+    )
+endif()
+
+set(source_dir "${CMAKE_BINARY_DIR}/liblogger-src")
+set(build_dir "${CMAKE_BINARY_DIR}/liblogger-build")
+include_directories(${source_dir}/inc)
+link_directories(${build_dir}/build)
+
+
