@@ -1,5 +1,5 @@
 #include "display.hpp"
-#include "lidarfactory.hpp"
+#include "lidar/factory.hpp"
 #include "serial.hpp"
 
 #include <boost/program_options.hpp>
@@ -41,12 +41,12 @@ int main(int argc, char* argv[])
 
     const auto& device = vm.contains("device")
                              ? vm.at("device").as<std::string>()
-                             : "/dev/ttyUSB1";
+                             : "/dev/ttyUSB0";
 
     try
     {
         auto serial = std::make_shared<usb>(device);
-        auto lidar = LidarFinder::run(serial);
+        auto lidar = Lidar::Finder::run(serial);
         // lidar->watchangle(
         //     0, Observer<SampleData>::create([](const SampleData& data) {
         //         const auto& [angle, distance] = data;
