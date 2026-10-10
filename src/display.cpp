@@ -8,7 +8,9 @@
 #include <iostream>
 #include <mutex>
 
-void show(const SampleData& data, uint32_t pos, uint32_t idx)
+using namespace Lidar;
+
+void show(const Samples::Data& data, uint32_t pos, uint32_t idx)
 {
     auto [angle, distance] = data;
     std::cout << "\e[" << pos << ";1H[" << std::setfill('0') << std::setw(2)
@@ -19,7 +21,7 @@ void show(const SampleData& data, uint32_t pos, uint32_t idx)
               << std::flush;
 }
 
-void statustest(std::shared_ptr<LidarIf> lidar)
+void statustest(std::shared_ptr<Interface::Lidar> lidar)
 {
     static std::mutex mtx;
     static constexpr uint32_t measurespos{3};
@@ -28,11 +30,12 @@ void statustest(std::shared_ptr<LidarIf> lidar)
     int32_t line{measurespos}, lines{12};
     for (auto angle{0}, last{359}; angle <= last; angle += 360 / lines)
     {
-        lidar->watchangle(
-            angle, Observer<SampleData>::create([line](const SampleData& data) {
-                std::lock_guard<std::mutex> lock(mtx);
-                show(data, line, line - measurespos + 1);
-            }));
+        lidar->watchangle(angle, Helpers::Observer<Samples::Data>::create(
+                                     [line](const Samples::Data& data) {
+                                         std::lock_guard<std::mutex> lock(mtx);
+                                         show(data, line,
+                                              line - measurespos + 1);
+                                     }));
         line++;
     }
 
@@ -75,57 +78,65 @@ void statustest(std::shared_ptr<LidarIf> lidar)
 
     line++;
     lidar->watchangle(
-        0, Observer<SampleData>::create([line](const SampleData& data) {
-            std::lock_guard<std::mutex> lock(mtx);
-            const auto& [angle, distance] = data;
-            uint32_t dist{static_cast<uint32_t>(distance)};
-            std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
-            if (distance < 30)
-            {
-                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                          << "cm] CRITICAL: OBSTACLE TOO CLOSE\n";
-            }
-            else if (distance < 60)
-            {
-                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                          << "cm] WARNING: OBSTACLE NEARBY\n";
-            }
-            else
-            {
-                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                          << "cm] GOOD: OBSTACLE FAR AWAY\n";
-            }
-        }));
+        0, Helpers::Observer<Samples::Data>::create(
+               [line](const Samples::Data& data) {
+                   std::lock_guard<std::mutex> lock(mtx);
+                   const auto& [angle, distance] = data;
+                   uint32_t dist{static_cast<uint32_t>(distance)};
+                   std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
+                   if (distance < 30)
+                   {
+                       std::cout << "[" << std::setfill('0') << std::setw(3)
+                                 << angle << "dgr@" << std::setfill('0')
+                                 << std::setw(3) << dist
+                                 << "cm] CRITICAL: OBSTACLE TOO CLOSE\n";
+                   }
+                   else if (distance < 60)
+                   {
+                       std::cout << "[" << std::setfill('0') << std::setw(3)
+                                 << angle << "dgr@" << std::setfill('0')
+                                 << std::setw(3) << dist
+                                 << "cm] WARNING: OBSTACLE NEARBY\n";
+                   }
+                   else
+                   {
+                       std::cout << "[" << std::setfill('0') << std::setw(3)
+                                 << angle << "dgr@" << std::setfill('0')
+                                 << std::setw(3) << dist
+                                 << "cm] GOOD: OBSTACLE FAR AWAY\n";
+                   }
+               }));
 
     line++;
     lidar->watchangle(
-        180, Observer<SampleData>::create([line](const SampleData& data) {
-            std::lock_guard<std::mutex> lock(mtx);
-            const auto& [angle, distance] = data;
-            uint32_t dist{static_cast<uint32_t>(distance)};
-            std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
-            if (distance < 30)
-            {
-                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                          << "cm] CRITICAL: OBSTACLE TOO CLOSE\n";
-            }
-            else if (distance < 60)
-            {
-                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                          << "cm] WARNING: OBSTACLE NEARBY\n";
-            }
-            else
-            {
-                std::cout << "[" << std::setfill('0') << std::setw(3) << angle
-                          << "dgr@" << std::setfill('0') << std::setw(3) << dist
-                          << "cm] GOOD: OBSTACLE FAR AWAY\n";
-            }
-        }));
+        180, Helpers::Observer<Samples::Data>::create(
+                 [line](const Samples::Data& data) {
+                     std::lock_guard<std::mutex> lock(mtx);
+                     const auto& [angle, distance] = data;
+                     uint32_t dist{static_cast<uint32_t>(distance)};
+                     std::cout << "\e[" << line << ";1H\r\e[K" << std::flush;
+                     if (distance < 30)
+                     {
+                         std::cout << "[" << std::setfill('0') << std::setw(3)
+                                   << angle << "dgr@" << std::setfill('0')
+                                   << std::setw(3) << dist
+                                   << "cm] CRITICAL: OBSTACLE TOO CLOSE\n";
+                     }
+                     else if (distance < 60)
+                     {
+                         std::cout << "[" << std::setfill('0') << std::setw(3)
+                                   << angle << "dgr@" << std::setfill('0')
+                                   << std::setw(3) << dist
+                                   << "cm] WARNING: OBSTACLE NEARBY\n";
+                     }
+                     else
+                     {
+                         std::cout << "[" << std::setfill('0') << std::setw(3)
+                                   << angle << "dgr@" << std::setfill('0')
+                                   << std::setw(3) << dist
+                                   << "cm] GOOD: OBSTACLE FAR AWAY\n";
+                     }
+                 }));
 }
 
 bool Display::info()
@@ -178,7 +189,7 @@ bool Display::configuration()
     return true;
 }
 
-bool Display::scanning(scan_t type)
+bool Display::scanning(Scan::scan_t type)
 {
     auto [name, subname] = lidar->getscaninfo(type);
     name[0] = (char)toupper(name[0]);
@@ -227,12 +238,12 @@ void Display::run()
         std::bind(&Display::configuration, this));
     entries.emplace_back(
         "run normal scanning", []() { return true; },
-        std::bind(&Display::scanning, this, scan_t::normal));
+        std::bind(&Display::scanning, this, Scan::scan_t::normal));
     entries.emplace_back(
         "run express scanning [" +
-            std::get<1>(lidar->getscaninfo(scan_t::express)) + "]",
+            std::get<1>(lidar->getscaninfo(Scan::scan_t::express)) + "]",
         []() { return true; },
-        std::bind(&Display::scanning, this, scan_t::express));
+        std::bind(&Display::scanning, this, Scan::scan_t::express));
     entries.emplace_back(
         "exit program", []() { return true; },
         [this]() { return exitprogram(); });
